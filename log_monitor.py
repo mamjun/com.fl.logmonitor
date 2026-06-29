@@ -201,6 +201,7 @@ class LogMonitorApp:
         self._log_frame = None
         self._json_frame = None
         self._separator = None
+        self._paned = None
         self._empty_label = None
 
         self._load_max_columns()
@@ -297,6 +298,10 @@ class LogMonitorApp:
             self._separator.destroy()
             self._separator = None
 
+        if self._paned is not None:
+            self._paned.destroy()
+            self._paned = None
+
         if self._empty_label is not None:
             self._empty_label.destroy()
             self._empty_label = None
@@ -323,17 +328,27 @@ class LogMonitorApp:
             self._empty_label.pack(padx=20, pady=40)
             return
 
-        if has_logs:
-            self._build_log_section(log_items)
+        if has_json and has_logs:
+            self._paned = ttk.PanedWindow(self.root, orient=tk.VERTICAL)
+            self._paned.pack(fill=tk.BOTH, expand=True)
 
-        if has_logs and has_json:
-            self._separator = ttk.Separator(self.root, orient=tk.HORIZONTAL)
-            self._separator.pack(fill=tk.X, padx=4, pady=2)
+            self._build_json_section(json_items, self._paned)
+            self._build_log_section(log_items, self._paned)
 
-        if has_json:
-            self._build_json_section(json_items)
+            self._paned.add(self._json_frame, weight=1)
+            self._paned.add(self._log_frame, weight=1)
 
-    def _build_log_section(self, log_items):
+            sash = config.get("sash_position", 0)
+            if sash:
+                self.root.after(10, lambda s=sash: self._paned.sashpos(0, s))
+        elif has_json:
+            self._build_json_section(json_items, self.root)
+        elif has_logs:
+            self._build_log_section(log_items, self.root)
+
+    def _build_log_section(self, log_items, parent=None):
+        if parent is None:
+            parent = self.root
         columns = {c: [] for c in range(1, self.max_columns + 1)}
         for item in log_items:
             path = item.get("path", "")
@@ -346,7 +361,7 @@ class LogMonitorApp:
         if not active_columns:
             return
 
-        self._log_frame = ttk.Frame(self.root)
+        self._log_frame = ttk.Frame(parent)
         self._log_frame.pack(fill=tk.BOTH, expand=True)
 
         for i, col_idx in enumerate(active_columns):
@@ -362,7 +377,9 @@ class LogMonitorApp:
 
         self._log_frame.rowconfigure(0, weight=1)
 
-    def _build_json_section(self, json_items):
+    def _build_json_section(self, json_items, parent=None):
+        if parent is None:
+            parent = self.root
         columns = {c: [] for c in range(1, self.json_max_columns + 1)}
         for item in json_items:
             path = item.get("path", "")
@@ -375,7 +392,7 @@ class LogMonitorApp:
         if not active_columns:
             return
 
-        self._json_frame = ttk.Frame(self.root)
+        self._json_frame = ttk.Frame(parent)
         self._json_frame.pack(fill=tk.BOTH, expand=True)
 
         for i, col_idx in enumerate(active_columns):
@@ -554,6 +571,15 @@ class LogMonitorApp:
         return fields
 
     def _on_close(self):
+        if self._paned is not None:
+            try:
+                pos = self._paned.sashpos(0)
+                config = self._read_config()
+                if config is not None:
+                    config["sash_position"] = pos
+                    self._write_config(config)
+            except Exception:
+                pass
         self._clear_panels()
         self.root.destroy()
 

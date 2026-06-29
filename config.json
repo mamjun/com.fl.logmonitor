@@ -42,5 +42,6 @@
             "refresh_ms": 1000,
             "column": 2
         }
-    ]
+    ],
+    "sash_position": 249
 }
