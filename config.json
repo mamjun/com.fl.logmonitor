@@ -19,29 +19,26 @@
     ],
     "json_monitors": [
         {
-            "path": "example.json",
+            "path": "D:/Dev/Python/com.fl.logmonitor/test.json",
             "fields": [
-                "code",
-                "data.host.hostname",
-                "data.cpu.cpuUsedPercent",
-                "data.mem.usedPercent",
-                "data.disk.devices"
+                "进度",
+                "番号",
+                "耗时"
             ],
             "refresh_ms": 1000,
             "column": 1
         },
         {
-            "path": "D:/Dev/Python/com.fl.logmonitor/example.json",
+            "path": "D:/Dev/Python/com.fl.logmonitor/test2.json",
             "fields": [
-                "data.cpu.cpuPercent",
-                "data.cpu.cpuUsedPercent",
-                "data.cpu.cpuUsed",
-                "data.mem.total",
-                "data.mem.available"
+                "站点",
+                "JavDB",
+                "JavBus",
+                "123av"
             ],
             "refresh_ms": 1000,
             "column": 2
         }
     ],
-    "sash_position": 249
+    "sash_position": 273
 }

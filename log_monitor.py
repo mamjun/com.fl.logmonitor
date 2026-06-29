@@ -6,12 +6,18 @@ from tkinter import filedialog, messagebox, ttk
 
 
 class LogPanel(ttk.Frame):
-    def __init__(self, parent, config_item):
+    def __init__(self, parent, config_item, on_config_change=None, _popup=False):
         super().__init__(parent)
         self.log_path = config_item["path"]
         self.display_lines = config_item["lines"]
         self.refresh_ms = config_item["refresh_ms"]
         self.order = config_item.get("order", "asc")
+        self._config_item = config_item
+        self._on_config_change = on_config_change
+        self._notebook = None
+        self._toplevel = None
+        self._detached_panel = None
+        self._popup = _popup
         self._active = True
 
         self._build_ui()
@@ -29,7 +35,11 @@ class LogPanel(ttk.Frame):
         ttk.Label(
             info_frame,
             text=f"行数: {self.display_lines}  |  刷新: {self.refresh_ms}ms  |  排序: {order_text}",
-        ).pack(side=tk.RIGHT)
+        ).pack(side=tk.LEFT, padx=(8, 8))
+        if not self._popup:
+            ttk.Button(info_frame, text="弹出", command=self._detach, width=4).pack(
+                side=tk.RIGHT
+            )
 
         text_frame = ttk.Frame(self)
         text_frame.pack(fill=tk.BOTH, expand=True, padx=4, pady=4)
@@ -86,16 +96,76 @@ class LogPanel(ttk.Frame):
         except Exception as e:
             return f"[错误] 读取文件失败: {e}"
 
+    def _detach(self):
+        if self._toplevel is not None:
+            return
+        self._notebook = self.master
+        try:
+            tab_id = self._notebook.index(self)
+            self._notebook.forget(tab_id)
+        except Exception:
+            pass
+
+        self.stop_refresh()
+
+        self._toplevel = tk.Toplevel(self.winfo_toplevel())
+        self._toplevel.title(os.path.basename(self.log_path))
+        self._toplevel.protocol("WM_DELETE_WINDOW", self._reattach)
+
+        self._detached_panel = LogPanel(
+            self._toplevel, self._config_item, _popup=True
+        )
+        self._detached_panel.pack(fill=tk.BOTH, expand=True)
+
+        geom = self._config_item.get("geometry", "500x350")
+        self._toplevel.geometry(geom)
+
+        self._config_item["detached"] = True
+        if self._on_config_change:
+            self._on_config_change()
+
+    def _reattach(self):
+        if self._toplevel is None:
+            return
+        try:
+            geom = self._toplevel.geometry()
+            self._config_item["geometry"] = geom
+        except Exception:
+            pass
+
+        self._detached_panel.stop_refresh()
+        self._toplevel.destroy()
+        self._toplevel = None
+        self._detached_panel = None
+
+        self._notebook.add(self, text=os.path.basename(self.log_path) or self.log_path)
+        self._active = True
+        self._schedule_refresh()
+
+        self._config_item["detached"] = False
+        if self._on_config_change:
+            self._on_config_change()
+
+    @property
+    def is_detached(self):
+        return self._toplevel is not None
+
 
 MAX_JSON_FIELDS = 10
 
 
 class JsonPanel(ttk.Frame):
-    def __init__(self, parent, config_item):
+    def __init__(self, parent, config_item, on_config_change=None, _popup=False):
         super().__init__(parent)
         self.json_path = config_item["path"]
         self.fields = config_item["fields"]
         self.refresh_ms = config_item["refresh_ms"]
+        self._config_item = config_item
+        self._on_config_change = on_config_change
+        self._notebook = None
+        self._toplevel = None
+        self._detached_panel = None
+        self._popup = _popup
         self._active = True
 
         self._build_ui()
@@ -112,7 +182,11 @@ class JsonPanel(ttk.Frame):
         ttk.Label(
             info_frame,
             text=f"字段: {len(self.fields)}  |  刷新: {self.refresh_ms}ms",
-        ).pack(side=tk.RIGHT)
+        ).pack(side=tk.LEFT, padx=(8, 8))
+        if not self._popup:
+            ttk.Button(info_frame, text="弹出", command=self._detach, width=4).pack(
+                side=tk.RIGHT
+            )
 
         text_frame = ttk.Frame(self)
         text_frame.pack(fill=tk.BOTH, expand=True, padx=4, pady=4)
@@ -186,6 +260,60 @@ class JsonPanel(ttk.Frame):
                 return None
         return current
 
+    def _detach(self):
+        if self._toplevel is not None:
+            return
+        self._notebook = self.master
+        try:
+            tab_id = self._notebook.index(self)
+            self._notebook.forget(tab_id)
+        except Exception:
+            pass
+
+        self.stop_refresh()
+
+        self._toplevel = tk.Toplevel(self.winfo_toplevel())
+        self._toplevel.title(os.path.basename(self.json_path))
+        self._toplevel.protocol("WM_DELETE_WINDOW", self._reattach)
+
+        self._detached_panel = JsonPanel(
+            self._toplevel, self._config_item, _popup=True
+        )
+        self._detached_panel.pack(fill=tk.BOTH, expand=True)
+
+        geom = self._config_item.get("geometry", "500x350")
+        self._toplevel.geometry(geom)
+
+        self._config_item["detached"] = True
+        if self._on_config_change:
+            self._on_config_change()
+
+    def _reattach(self):
+        if self._toplevel is None:
+            return
+        try:
+            geom = self._toplevel.geometry()
+            self._config_item["geometry"] = geom
+        except Exception:
+            pass
+
+        self._detached_panel.stop_refresh()
+        self._toplevel.destroy()
+        self._toplevel = None
+        self._detached_panel = None
+
+        self._notebook.add(self, text=os.path.basename(self.json_path) or self.json_path)
+        self._active = True
+        self._schedule_refresh()
+
+        self._config_item["detached"] = False
+        if self._on_config_change:
+            self._on_config_change()
+
+    @property
+    def is_detached(self):
+        return self._toplevel is not None
+
 
 class LogMonitorApp:
     def __init__(self, config_path="config.json"):
@@ -234,6 +362,10 @@ class LogMonitorApp:
             side=tk.LEFT
         )
         ttk.Separator(toolbar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=4)
+        ttk.Button(toolbar, text="重新载入", command=self._reload).pack(
+            side=tk.LEFT, padx=4
+        )
+        ttk.Separator(toolbar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=4)
         ttk.Label(toolbar, text="日志最大列数:").pack(side=tk.LEFT, padx=(4, 2))
         self._max_col_var = tk.IntVar(value=self.max_columns)
         ttk.Spinbox(
@@ -279,11 +411,25 @@ class LogMonitorApp:
 
     def _clear_panels(self):
         for panel in self.panels:
-            panel.stop_refresh()
+            try:
+                panel.stop_refresh()
+                if panel._detached_panel is not None:
+                    panel._detached_panel.stop_refresh()
+                if panel._toplevel is not None:
+                    panel._toplevel.destroy()
+            except Exception:
+                pass
         self.panels.clear()
 
         for panel in self.json_panels:
-            panel.stop_refresh()
+            try:
+                panel.stop_refresh()
+                if panel._detached_panel is not None:
+                    panel._detached_panel.stop_refresh()
+                if panel._toplevel is not None:
+                    panel._toplevel.destroy()
+            except Exception:
+                pass
         self.json_panels.clear()
 
         if self._log_frame is not None:
@@ -340,7 +486,15 @@ class LogMonitorApp:
 
             sash = config.get("sash_position", 0)
             if sash:
-                self.root.after(10, lambda s=sash: self._paned.sashpos(0, s))
+                def _restore_sash(s=sash):
+                    try:
+                        total = self._paned.winfo_height()
+                        if total > 0:
+                            clamped = max(20, min(s, total - 20))
+                            self._paned.sashpos(0, clamped)
+                    except Exception:
+                        pass
+                self._paned.bind("<Map>", lambda e, cb=_restore_sash: self.root.after(50, cb), add="+")
         elif has_json:
             self._build_json_section(json_items, self.root)
         elif has_logs:
@@ -362,7 +516,9 @@ class LogMonitorApp:
             return
 
         self._log_frame = ttk.Frame(parent)
-        self._log_frame.pack(fill=tk.BOTH, expand=True)
+        # packing is handled by the caller (_reload)
+        if parent is self.root:
+            self._log_frame.pack(fill=tk.BOTH, expand=True)
 
         for i, col_idx in enumerate(active_columns):
             self._log_frame.columnconfigure(i, weight=1, uniform="col")
@@ -370,10 +526,13 @@ class LogMonitorApp:
             notebook.grid(row=0, column=i, sticky="nsew", padx=2, pady=2)
 
             for item in columns[col_idx]:
-                panel = LogPanel(notebook, item)
+                panel = LogPanel(notebook, item, on_config_change=self._save_config)
                 tab_name = os.path.basename(item["path"]) or item["path"]
                 notebook.add(panel, text=tab_name)
                 self.panels.append(panel)
+
+                if item.get("detached"):
+                    self.root.after(100, panel._detach)
 
         self._log_frame.rowconfigure(0, weight=1)
 
@@ -393,7 +552,8 @@ class LogMonitorApp:
             return
 
         self._json_frame = ttk.Frame(parent)
-        self._json_frame.pack(fill=tk.BOTH, expand=True)
+        if parent is self.root:
+            self._json_frame.pack(fill=tk.BOTH, expand=True)
 
         for i, col_idx in enumerate(active_columns):
             self._json_frame.columnconfigure(i, weight=1, uniform="col")
@@ -401,10 +561,13 @@ class LogMonitorApp:
             notebook.grid(row=0, column=i, sticky="nsew", padx=2, pady=2)
 
             for item in columns[col_idx]:
-                panel = JsonPanel(notebook, item)
+                panel = JsonPanel(notebook, item, on_config_change=self._save_config)
                 tab_name = os.path.basename(item["path"]) or item["path"]
                 notebook.add(panel, text=tab_name)
                 self.json_panels.append(panel)
+
+                if item.get("detached"):
+                    self.root.after(100, panel._detach)
 
         self._json_frame.rowconfigure(0, weight=1)
 
@@ -425,6 +588,11 @@ class LogMonitorApp:
                 json.dump(config, f, ensure_ascii=False, indent=4)
         except OSError as e:
             messagebox.showerror("写入失败", f"无法写入配置文件: {e}")
+
+    def _save_config(self):
+        config = self._read_config()
+        if config is not None:
+            self._write_config(config)
 
     def _add_file(self):
         file_path = filedialog.askopenfilename(
@@ -571,6 +739,19 @@ class LogMonitorApp:
         return fields
 
     def _on_close(self):
+        for panel in self.panels + self.json_panels:
+            if panel._toplevel is not None:
+                try:
+                    geom = panel._toplevel.geometry()
+                    panel._config_item["geometry"] = geom
+                except Exception:
+                    pass
+            if panel._detached_panel is not None:
+                try:
+                    panel._detached_panel.stop_refresh()
+                except Exception:
+                    pass
+        self._save_config()
         if self._paned is not None:
             try:
                 pos = self._paned.sashpos(0)

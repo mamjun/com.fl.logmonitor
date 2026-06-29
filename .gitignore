@@ -1,3 +1,4 @@
 dist
 build
-log_monitor.spec
+*.spec
+*.exe
