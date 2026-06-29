@@ -1,6 +1,6 @@
 # 日志监控器 (Log Monitor)
 
-一个基于 Python tkinter 的实时日志、JSON 与 CSV 数据监控工具，支持自由拖拽面板、可配置刷新频率。
+一个基于 Python tkinter 的实时日志、JSON 与 CSV 数据监控工具，支持自由拖拽面板、面板弹出/收回、可配置刷新频率，以及面板位置持久化。
 
 ## 环境要求
 
@@ -19,6 +19,17 @@ python log_monitor.py
 python log_monitor.py my_config.json
 ```
 
+### 打包为 exe
+
+项目包含 PyInstaller 配置文件 `log_monitor.spec`，可直接打包：
+
+```bash
+pip install pyinstaller
+pyinstaller log_monitor.spec
+```
+
+打包后的 exe 位于 `dist/` 目录下。
+
 ## 模块结构
 
 | 文件 | 说明 |
@@ -28,17 +39,46 @@ python log_monitor.py my_config.json
 | `json_panel.py` | JSON 监控面板模块 |
 | `table_panel.py` | CSV 表格监控面板模块 |
 | `config.json` | 配置文件 |
+| `log_monitor.spec` | PyInstaller 打包配置 |
 
 ## 配置文件 (`config.json`)
 
+### 全局配置
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `window_width` | int | 主窗口宽度（自动保存） |
+| `window_height` | int | 主窗口高度（自动保存） |
+
+### 面板位置配置（自动管理）
+
+每个监控项可包含以下位置字段，由程序自动保存和恢复：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `x` | int | 面板在内容区域内的 X 坐标 |
+| `y` | int | 面板在内容区域内的 Y 坐标 |
+| `width` | int | 面板宽度 |
+| `height` | int | 面板高度 |
+| `detached` | bool | 面板是否处于弹出状态 |
+| `geometry` | string | 弹出窗口的几何信息（如 `"500x350+100+100"`） |
+
+### 配置示例
+
 ```json
 {
+    "window_width": 1200,
+    "window_height": 800,
     "logs": [
         {
             "path": "example1.log",
             "lines": 30,
             "refresh_ms": 1000,
-            "order": "asc"
+            "order": "asc",
+            "x": 10,
+            "y": 10,
+            "width": 400,
+            "height": 300
         }
     ],
     "json_monitors": [
@@ -46,7 +86,11 @@ python log_monitor.py my_config.json
             "path": "example.json",
             "fields": ["code", "data.host.hostname"],
             "field_aliases": {"code": "状态码"},
-            "refresh_ms": 1000
+            "refresh_ms": 1000,
+            "x": 420,
+            "y": 10,
+            "width": 400,
+            "height": 300
         }
     ],
     "table_monitors": [
@@ -55,7 +99,11 @@ python log_monitor.py my_config.json
             "columns": ["name", "score"],
             "column_aliases": {"name": "姓名", "score": "分数"},
             "max_rows": 100,
-            "refresh_ms": 1000
+            "refresh_ms": 1000,
+            "x": 830,
+            "y": 10,
+            "width": 400,
+            "height": 300
         }
     ]
 }
@@ -103,7 +151,9 @@ python log_monitor.py my_config.json
 | **添加表格** | 选择 CSV 文件 → 自动解析表头 → 多选要显示的列 → 双击可设置别名 → 设置行数/刷新间隔 |
 | **编辑表格** | 选择已监控的 CSV → 重新选择列和别名 |
 | **删除表格** | 列表中选择已监控的 CSV → 删除 |
-| **重新载入** | 重新加载配置文件 |
+| **保存位置** | 将当前所有面板位置、大小及弹出窗口状态保存到配置文件 |
+| **重置位置** | 清除所有面板位置信息，下次加载时使用默认布局 |
+| **重新载入** | 重新加载配置文件，刷新所有面板 |
 
 ### 面板操作
 
@@ -116,21 +166,26 @@ python log_monitor.py my_config.json
 ### 界面布局
 
 ```
-┌──────────────────────────────────────────────────────┐
-│  添加日志 删除日志 │ 添加JSON 编辑JSON 删除JSON │ ... │
-├──────────────────────────────────────────────────────┤
-│  ┌──────────────┐  ┌──────────────┐                  │
-│  │ example1.log │  │ example.json │                  │
-│  │              │  │ code: 0      │                  │
-│  │              │  │ hostname: .. │   ┌───────────┐  │
-│  │              │  │              │   │ test.csv  │  │
-│  └──────────────┘  └──────────────┘   │ 姓名 分数 │  │
-│          ◢               ◢            │ 张三  95  │  │
-│                                       └───────────┘  │
-│                                              ◢       │
-└──────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────┐
+│  添加日志 删除日志 │ 添加JSON 编辑JSON 删除JSON │ ...    │
+├──────────────────────────────────────────────────────────┤
+│  ┌──────────────┐  ┌──────────────┐                     │
+│  │ example1.log │  │ example.json │                     │
+│  │              │  │ code: 0      │  ┌───────────┐      │
+│  │              │  │ hostname: .. │  │ test.csv  │      │
+│  └──────────────┘  └──────────────┘  │ 姓名 分数 │      │
+│          ◢               ◢           │ 张三  95  │      │
+│                                      └───────────┘      │
+│                                             ◢           │
+│  ┌──────────────┐  ┌──────────────┐                     │
+│  │example2.log  │  │  test2.json  │                     │
+│  │              │  │              │                     │
+│  └──────────────┘  └──────────────┘                     │
+│          ◢               ◢                              │
+└──────────────────────────────────────────────────────────┘
 ```
 
-- 三种面板（日志/JSON/表格）在同一个主窗口中自由排列，不再按列固定
+- 三种面板（日志/JSON/表格）在同一个主窗口中自由拖拽排列，位置和大小自动保存到配置文件
+- 通过「保存位置」按钮可手动保存当前布局，「重置位置」恢复默认排列
 - 暗色主题（黑底浅色字）显示日志和 JSON 面板
 - 表格面板使用 Treeview 组件，带水平和垂直滚动条
