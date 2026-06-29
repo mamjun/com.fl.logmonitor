@@ -38,6 +38,16 @@
             ],
             "refresh_ms": 1000,
             "column": 2
+        },
+        {
+            "path": "D:/Dev/Python/com.fl.logmonitor/web.json",
+            "fields": [
+                "浏览器池"
+            ],
+            "field_aliases": {
+                "浏览器池": "aaa"
+            },
+            "refresh_ms": 1000
         }
     ],
     "sash_position": 273

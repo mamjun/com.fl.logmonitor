@@ -14,7 +14,7 @@ class LogPanel(ttk.Frame):
         self.order = config_item.get("order", "asc")
         self._config_item = config_item
         self._on_config_change = on_config_change
-        self._notebook = None
+        self._content_parent = None
         self._toplevel = None
         self._detached_panel = None
         self._popup = _popup
@@ -27,17 +27,17 @@ class LogPanel(ttk.Frame):
         self._active = False
 
     def _build_ui(self):
-        info_frame = ttk.Frame(self)
-        info_frame.pack(fill=tk.X, padx=4, pady=(4, 0))
+        self._info_frame = ttk.Frame(self, cursor="fleur")
+        self._info_frame.pack(fill=tk.X, padx=4, pady=(4, 0))
 
         order_text = "新→旧" if self.order == "desc" else "旧→新"
-        ttk.Label(info_frame, text=f"文件: {self.log_path}").pack(side=tk.LEFT)
+        ttk.Label(self._info_frame, text=f"文件: {self.log_path}").pack(side=tk.LEFT)
         ttk.Label(
-            info_frame,
+            self._info_frame,
             text=f"行数: {self.display_lines}  |  刷新: {self.refresh_ms}ms  |  排序: {order_text}",
         ).pack(side=tk.LEFT, padx=(8, 8))
         if not self._popup:
-            ttk.Button(info_frame, text="弹出", command=self._detach, width=4).pack(
+            ttk.Button(self._info_frame, text="弹出", command=self._detach, width=4).pack(
                 side=tk.RIGHT
             )
 
@@ -68,6 +68,76 @@ class LogPanel(ttk.Frame):
         h_scrollbar.grid(row=1, column=0, sticky="ew")
         text_frame.rowconfigure(0, weight=1)
         text_frame.columnconfigure(0, weight=1)
+
+        self._resize_grip = ttk.Label(self, text="◢", cursor="size_nw_se", font=("", 8))
+        self._resize_grip.place(relx=1.0, rely=1.0, anchor="se")
+
+    def enable_drag_resize(self, content_parent):
+        self._content_parent = content_parent
+        self._drag_data = {"x": 0, "y": 0}
+        self._resize_data = {"x": 0, "y": 0, "w": 0, "h": 0}
+
+        self._info_frame.bind("<ButtonPress-1>", self._start_drag)
+        self._info_frame.bind("<B1-Motion>", self._on_drag)
+        self._info_frame.bind("<ButtonRelease-1>", self._stop_drag)
+
+        self._resize_grip.bind("<ButtonPress-1>", self._start_resize)
+        self._resize_grip.bind("<B1-Motion>", self._on_resize)
+        self._resize_grip.bind("<ButtonRelease-1>", self._stop_resize)
+
+        for child in self._info_frame.winfo_children():
+            if isinstance(child, ttk.Button):
+                continue
+            child.bind("<ButtonPress-1>", self._start_drag)
+            child.bind("<B1-Motion>", self._on_drag)
+            child.bind("<ButtonRelease-1>", self._stop_drag)
+
+    def _start_drag(self, event):
+        self._drag_data["x"] = event.x_root
+        self._drag_data["y"] = event.y_root
+        self.lift()
+
+    def _on_drag(self, event):
+        dx = event.x_root - self._drag_data["x"]
+        dy = event.y_root - self._drag_data["y"]
+        self._drag_data["x"] = event.x_root
+        self._drag_data["y"] = event.y_root
+
+        new_x = self.winfo_x() + dx
+        new_y = self.winfo_y() + dy
+        self.place(x=new_x, y=new_y)
+        self._save_place_geometry()
+
+    def _stop_drag(self, event):
+        self._save_place_geometry()
+
+    def _start_resize(self, event):
+        self._resize_data["x"] = event.x_root
+        self._resize_data["y"] = event.y_root
+        self._resize_data["w"] = self.winfo_width()
+        self._resize_data["h"] = self.winfo_height()
+
+    def _on_resize(self, event):
+        dx = event.x_root - self._resize_data["x"]
+        dy = event.y_root - self._resize_data["y"]
+        new_w = max(200, self._resize_data["w"] + dx)
+        new_h = max(150, self._resize_data["h"] + dy)
+        self.place(width=new_w, height=new_h)
+        self._save_place_geometry()
+
+    def _stop_resize(self, event):
+        self._save_place_geometry()
+
+    def _save_place_geometry(self):
+        try:
+            self._config_item["x"] = self.winfo_x()
+            self._config_item["y"] = self.winfo_y()
+            self._config_item["width"] = self.winfo_width()
+            self._config_item["height"] = self.winfo_height()
+            if self._on_config_change:
+                self._on_config_change()
+        except Exception:
+            pass
 
     def _schedule_refresh(self):
         if not self._active:
@@ -99,14 +169,13 @@ class LogPanel(ttk.Frame):
     def _detach(self):
         if self._toplevel is not None:
             return
-        self._notebook = self.master
-        try:
-            tab_id = self._notebook.index(self)
-            self._notebook.forget(tab_id)
-        except Exception:
-            pass
+        self._save_place_geometry()
+        self._config_item["detached"] = True
+        if self._on_config_change:
+            self._on_config_change()
 
         self.stop_refresh()
+        self.place_forget()
 
         self._toplevel = tk.Toplevel(self.winfo_toplevel())
         self._toplevel.title(os.path.basename(self.log_path))
@@ -119,10 +188,6 @@ class LogPanel(ttk.Frame):
 
         geom = self._config_item.get("geometry", "500x350")
         self._toplevel.geometry(geom)
-
-        self._config_item["detached"] = True
-        if self._on_config_change:
-            self._on_config_change()
 
     def _reattach(self):
         if self._toplevel is None:
@@ -138,13 +203,18 @@ class LogPanel(ttk.Frame):
         self._toplevel = None
         self._detached_panel = None
 
-        self._notebook.add(self, text=os.path.basename(self.log_path) or self.log_path)
-        self._active = True
-        self._schedule_refresh()
-
         self._config_item["detached"] = False
         if self._on_config_change:
             self._on_config_change()
+
+        x = self._config_item.get("x", 10)
+        y = self._config_item.get("y", 10)
+        w = self._config_item.get("width", 400)
+        h = self._config_item.get("height", 300)
+        self.place(x=x, y=y, width=w, height=h)
+        self.lift()
+        self._active = True
+        self._schedule_refresh()
 
     @property
     def is_detached(self):
@@ -159,10 +229,11 @@ class JsonPanel(ttk.Frame):
         super().__init__(parent)
         self.json_path = config_item["path"]
         self.fields = config_item["fields"]
+        self.field_aliases = config_item.get("field_aliases", {})
         self.refresh_ms = config_item["refresh_ms"]
         self._config_item = config_item
         self._on_config_change = on_config_change
-        self._notebook = None
+        self._content_parent = None
         self._toplevel = None
         self._detached_panel = None
         self._popup = _popup
@@ -175,16 +246,16 @@ class JsonPanel(ttk.Frame):
         self._active = False
 
     def _build_ui(self):
-        info_frame = ttk.Frame(self)
-        info_frame.pack(fill=tk.X, padx=4, pady=(4, 0))
+        self._info_frame = ttk.Frame(self, cursor="fleur")
+        self._info_frame.pack(fill=tk.X, padx=4, pady=(4, 0))
 
-        ttk.Label(info_frame, text=f"JSON: {self.json_path}").pack(side=tk.LEFT)
+        ttk.Label(self._info_frame, text=f"JSON: {self.json_path}").pack(side=tk.LEFT)
         ttk.Label(
-            info_frame,
+            self._info_frame,
             text=f"字段: {len(self.fields)}  |  刷新: {self.refresh_ms}ms",
         ).pack(side=tk.LEFT, padx=(8, 8))
         if not self._popup:
-            ttk.Button(info_frame, text="弹出", command=self._detach, width=4).pack(
+            ttk.Button(self._info_frame, text="弹出", command=self._detach, width=4).pack(
                 side=tk.RIGHT
             )
 
@@ -216,6 +287,76 @@ class JsonPanel(ttk.Frame):
         text_frame.rowconfigure(0, weight=1)
         text_frame.columnconfigure(0, weight=1)
 
+        self._resize_grip = ttk.Label(self, text="◢", cursor="size_nw_se", font=("", 8))
+        self._resize_grip.place(relx=1.0, rely=1.0, anchor="se")
+
+    def enable_drag_resize(self, content_parent):
+        self._content_parent = content_parent
+        self._drag_data = {"x": 0, "y": 0}
+        self._resize_data = {"x": 0, "y": 0, "w": 0, "h": 0}
+
+        self._info_frame.bind("<ButtonPress-1>", self._start_drag)
+        self._info_frame.bind("<B1-Motion>", self._on_drag)
+        self._info_frame.bind("<ButtonRelease-1>", self._stop_drag)
+
+        self._resize_grip.bind("<ButtonPress-1>", self._start_resize)
+        self._resize_grip.bind("<B1-Motion>", self._on_resize)
+        self._resize_grip.bind("<ButtonRelease-1>", self._stop_resize)
+
+        for child in self._info_frame.winfo_children():
+            if isinstance(child, ttk.Button):
+                continue
+            child.bind("<ButtonPress-1>", self._start_drag)
+            child.bind("<B1-Motion>", self._on_drag)
+            child.bind("<ButtonRelease-1>", self._stop_drag)
+
+    def _start_drag(self, event):
+        self._drag_data["x"] = event.x_root
+        self._drag_data["y"] = event.y_root
+        self.lift()
+
+    def _on_drag(self, event):
+        dx = event.x_root - self._drag_data["x"]
+        dy = event.y_root - self._drag_data["y"]
+        self._drag_data["x"] = event.x_root
+        self._drag_data["y"] = event.y_root
+
+        new_x = self.winfo_x() + dx
+        new_y = self.winfo_y() + dy
+        self.place(x=new_x, y=new_y)
+        self._save_place_geometry()
+
+    def _stop_drag(self, event):
+        self._save_place_geometry()
+
+    def _start_resize(self, event):
+        self._resize_data["x"] = event.x_root
+        self._resize_data["y"] = event.y_root
+        self._resize_data["w"] = self.winfo_width()
+        self._resize_data["h"] = self.winfo_height()
+
+    def _on_resize(self, event):
+        dx = event.x_root - self._resize_data["x"]
+        dy = event.y_root - self._resize_data["y"]
+        new_w = max(200, self._resize_data["w"] + dx)
+        new_h = max(150, self._resize_data["h"] + dy)
+        self.place(width=new_w, height=new_h)
+        self._save_place_geometry()
+
+    def _stop_resize(self, event):
+        self._save_place_geometry()
+
+    def _save_place_geometry(self):
+        try:
+            self._config_item["x"] = self.winfo_x()
+            self._config_item["y"] = self.winfo_y()
+            self._config_item["width"] = self.winfo_width()
+            self._config_item["height"] = self.winfo_height()
+            if self._on_config_change:
+                self._on_config_change()
+        except Exception:
+            pass
+
     def _schedule_refresh(self):
         if not self._active:
             return
@@ -242,12 +383,13 @@ class JsonPanel(ttk.Frame):
         lines = []
         for field in self.fields:
             value = self._get_field_value(data, field)
+            display_name = self.field_aliases.get(field, field)
             if value is None:
-                lines.append(f"{field}: 数据获取失败")
+                lines.append(f"{display_name}: 数据获取失败")
             elif isinstance(value, (list, dict)):
-                lines.append(f"{field}: {json.dumps(value, ensure_ascii=False)}")
+                lines.append(f"{display_name}: {json.dumps(value, ensure_ascii=False)}")
             else:
-                lines.append(f"{field}: {value}")
+                lines.append(f"{display_name}: {value}")
         return "\n".join(lines)
 
     @staticmethod
@@ -263,14 +405,13 @@ class JsonPanel(ttk.Frame):
     def _detach(self):
         if self._toplevel is not None:
             return
-        self._notebook = self.master
-        try:
-            tab_id = self._notebook.index(self)
-            self._notebook.forget(tab_id)
-        except Exception:
-            pass
+        self._save_place_geometry()
+        self._config_item["detached"] = True
+        if self._on_config_change:
+            self._on_config_change()
 
         self.stop_refresh()
+        self.place_forget()
 
         self._toplevel = tk.Toplevel(self.winfo_toplevel())
         self._toplevel.title(os.path.basename(self.json_path))
@@ -283,10 +424,6 @@ class JsonPanel(ttk.Frame):
 
         geom = self._config_item.get("geometry", "500x350")
         self._toplevel.geometry(geom)
-
-        self._config_item["detached"] = True
-        if self._on_config_change:
-            self._on_config_change()
 
     def _reattach(self):
         if self._toplevel is None:
@@ -302,17 +439,27 @@ class JsonPanel(ttk.Frame):
         self._toplevel = None
         self._detached_panel = None
 
-        self._notebook.add(self, text=os.path.basename(self.json_path) or self.json_path)
-        self._active = True
-        self._schedule_refresh()
-
         self._config_item["detached"] = False
         if self._on_config_change:
             self._on_config_change()
 
+        x = self._config_item.get("x", 10)
+        y = self._config_item.get("y", 10)
+        w = self._config_item.get("width", 400)
+        h = self._config_item.get("height", 300)
+        self.place(x=x, y=y, width=w, height=h)
+        self.lift()
+        self._active = True
+        self._schedule_refresh()
+
     @property
     def is_detached(self):
         return self._toplevel is not None
+
+
+PANEL_DEFAULT_W = 400
+PANEL_DEFAULT_H = 300
+PANEL_GAP = 10
 
 
 class LogMonitorApp:
@@ -322,27 +469,15 @@ class LogMonitorApp:
         self.root.geometry("1200x800")
 
         self.config_path = config_path
-        self.max_columns = 3
-        self.json_max_columns = 3
         self.panels = []
         self.json_panels = []
-        self._log_frame = None
-        self._json_frame = None
-        self._separator = None
-        self._paned = None
+        self._content_frame = None
         self._empty_label = None
 
-        self._load_max_columns()
         self._build_toolbar()
         self._reload()
 
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
-
-    def _load_max_columns(self):
-        config = self._read_config()
-        if config is not None:
-            self.max_columns = max(1, min(10, config.get("max_columns", 3)))
-            self.json_max_columns = max(1, min(10, config.get("json_max_columns", 3)))
 
     def _build_toolbar(self):
         toolbar = ttk.Frame(self.root)
@@ -358,6 +493,9 @@ class LogMonitorApp:
         ttk.Button(toolbar, text="添加JSON", command=self._add_json).pack(
             side=tk.LEFT, padx=(4, 4)
         )
+        ttk.Button(toolbar, text="编辑JSON", command=self._edit_json).pack(
+            side=tk.LEFT, padx=(0, 4)
+        )
         ttk.Button(toolbar, text="删除JSON", command=self._delete_json).pack(
             side=tk.LEFT
         )
@@ -365,49 +503,6 @@ class LogMonitorApp:
         ttk.Button(toolbar, text="重新载入", command=self._reload).pack(
             side=tk.LEFT, padx=4
         )
-        ttk.Separator(toolbar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=4)
-        ttk.Label(toolbar, text="日志最大列数:").pack(side=tk.LEFT, padx=(4, 2))
-        self._max_col_var = tk.IntVar(value=self.max_columns)
-        ttk.Spinbox(
-            toolbar,
-            from_=1,
-            to=10,
-            width=4,
-            textvariable=self._max_col_var,
-            command=self._on_max_columns_changed,
-        ).pack(side=tk.LEFT)
-        ttk.Label(toolbar, text="JSON最大列数:").pack(side=tk.LEFT, padx=(8, 2))
-        self._json_max_col_var = tk.IntVar(value=self.json_max_columns)
-        ttk.Spinbox(
-            toolbar,
-            from_=1,
-            to=10,
-            width=4,
-            textvariable=self._json_max_col_var,
-            command=self._on_json_max_columns_changed,
-        ).pack(side=tk.LEFT)
-
-    def _on_max_columns_changed(self):
-        new_val = self._max_col_var.get()
-        if new_val == self.max_columns:
-            return
-        self.max_columns = new_val
-        config = self._read_config()
-        if config is not None:
-            config["max_columns"] = new_val
-            self._write_config(config)
-        self._reload()
-
-    def _on_json_max_columns_changed(self):
-        new_val = self._json_max_col_var.get()
-        if new_val == self.json_max_columns:
-            return
-        self.json_max_columns = new_val
-        config = self._read_config()
-        if config is not None:
-            config["json_max_columns"] = new_val
-            self._write_config(config)
-        self._reload()
 
     def _clear_panels(self):
         for panel in self.panels:
@@ -432,25 +527,24 @@ class LogMonitorApp:
                 pass
         self.json_panels.clear()
 
-        if self._log_frame is not None:
-            self._log_frame.destroy()
-            self._log_frame = None
-
-        if self._json_frame is not None:
-            self._json_frame.destroy()
-            self._json_frame = None
-
-        if self._separator is not None:
-            self._separator.destroy()
-            self._separator = None
-
-        if self._paned is not None:
-            self._paned.destroy()
-            self._paned = None
+        if self._content_frame is not None:
+            self._content_frame.destroy()
+            self._content_frame = None
 
         if self._empty_label is not None:
             self._empty_label.destroy()
             self._empty_label = None
+
+    def _compute_default_layout(self, count):
+        positions = []
+        cols = max(1, int(self.root.winfo_width() / (PANEL_DEFAULT_W + PANEL_GAP * 2)))
+        for i in range(count):
+            col = i % cols
+            row = i // cols
+            x = PANEL_GAP + col * (PANEL_DEFAULT_W + PANEL_GAP)
+            y = PANEL_GAP + row * (PANEL_DEFAULT_H + PANEL_GAP)
+            positions.append((x, y, PANEL_DEFAULT_W, PANEL_DEFAULT_H))
+        return positions
 
     def _reload(self):
         self._clear_panels()
@@ -462,10 +556,15 @@ class LogMonitorApp:
         log_items = config.get("logs", [])
         json_items = config.get("json_monitors", [])
 
-        has_logs = bool(log_items)
-        has_json = bool(json_items)
+        all_items = []
+        for item in log_items:
+            if item.get("path"):
+                all_items.append(("log", item))
+        for item in json_items:
+            if item.get("path"):
+                all_items.append(("json", item))
 
-        if not has_logs and not has_json:
+        if not all_items:
             self._empty_label = ttk.Label(
                 self.root,
                 text="配置文件中没有有效的监控项。",
@@ -474,102 +573,52 @@ class LogMonitorApp:
             self._empty_label.pack(padx=20, pady=40)
             return
 
-        if has_json and has_logs:
-            self._paned = ttk.PanedWindow(self.root, orient=tk.VERTICAL)
-            self._paned.pack(fill=tk.BOTH, expand=True)
+        self._content_frame = tk.Frame(self.root, bg="#d0d0d0")
+        self._content_frame.pack(fill=tk.BOTH, expand=True)
 
-            self._build_json_section(json_items, self._paned)
-            self._build_log_section(log_items, self._paned)
-
-            self._paned.add(self._json_frame, weight=1)
-            self._paned.add(self._log_frame, weight=1)
-
-            sash = config.get("sash_position", 0)
-            if sash:
-                def _restore_sash(s=sash):
-                    try:
-                        total = self._paned.winfo_height()
-                        if total > 0:
-                            clamped = max(20, min(s, total - 20))
-                            self._paned.sashpos(0, clamped)
-                    except Exception:
-                        pass
-                self._paned.bind("<Map>", lambda e, cb=_restore_sash: self.root.after(50, cb), add="+")
-        elif has_json:
-            self._build_json_section(json_items, self.root)
-        elif has_logs:
-            self._build_log_section(log_items, self.root)
-
-    def _build_log_section(self, log_items, parent=None):
-        if parent is None:
-            parent = self.root
-        columns = {c: [] for c in range(1, self.max_columns + 1)}
-        for item in log_items:
-            path = item.get("path", "")
-            if not path:
+        needs_layout = []
+        for item_type, item in all_items:
+            if item.get("detached"):
                 continue
-            column = max(1, min(self.max_columns, int(item.get("column", 1))))
-            columns[column].append(item)
+            has_geo = all(k in item for k in ("x", "y", "width", "height"))
+            if not has_geo:
+                needs_layout.append((item_type, item))
+            else:
+                self._place_panel(item_type, item, item["x"], item["y"], item["width"], item["height"])
 
-        active_columns = [c for c in range(1, self.max_columns + 1) if columns[c]]
-        if not active_columns:
-            return
+        if needs_layout:
+            defaults = self._compute_default_layout(len(needs_layout))
+            for (item_type, item), (x, y, w, h) in zip(needs_layout, defaults):
+                self._place_panel(item_type, item, x, y, w, h)
 
-        self._log_frame = ttk.Frame(parent)
-        # packing is handled by the caller (_reload)
-        if parent is self.root:
-            self._log_frame.pack(fill=tk.BOTH, expand=True)
-
-        for i, col_idx in enumerate(active_columns):
-            self._log_frame.columnconfigure(i, weight=1, uniform="col")
-            notebook = ttk.Notebook(self._log_frame)
-            notebook.grid(row=0, column=i, sticky="nsew", padx=2, pady=2)
-
-            for item in columns[col_idx]:
-                panel = LogPanel(notebook, item, on_config_change=self._save_config)
-                tab_name = os.path.basename(item["path"]) or item["path"]
-                notebook.add(panel, text=tab_name)
-                self.panels.append(panel)
-
-                if item.get("detached"):
+        for item_type, item in all_items:
+            if item.get("detached"):
+                if item_type == "log":
+                    panel = LogPanel(self._content_frame, item, on_config_change=self._save_config)
+                    panel.enable_drag_resize(self._content_frame)
+                    panel.place(x=0, y=0, width=1, height=1)
+                    panel.place_forget()
+                    self.panels.append(panel)
+                    self.root.after(100, panel._detach)
+                else:
+                    panel = JsonPanel(self._content_frame, item, on_config_change=self._save_config)
+                    panel.enable_drag_resize(self._content_frame)
+                    panel.place(x=0, y=0, width=1, height=1)
+                    panel.place_forget()
+                    self.json_panels.append(panel)
                     self.root.after(100, panel._detach)
 
-        self._log_frame.rowconfigure(0, weight=1)
-
-    def _build_json_section(self, json_items, parent=None):
-        if parent is None:
-            parent = self.root
-        columns = {c: [] for c in range(1, self.json_max_columns + 1)}
-        for item in json_items:
-            path = item.get("path", "")
-            if not path:
-                continue
-            column = max(1, min(self.json_max_columns, int(item.get("column", 1))))
-            columns[column].append(item)
-
-        active_columns = [c for c in range(1, self.json_max_columns + 1) if columns[c]]
-        if not active_columns:
-            return
-
-        self._json_frame = ttk.Frame(parent)
-        if parent is self.root:
-            self._json_frame.pack(fill=tk.BOTH, expand=True)
-
-        for i, col_idx in enumerate(active_columns):
-            self._json_frame.columnconfigure(i, weight=1, uniform="col")
-            notebook = ttk.Notebook(self._json_frame)
-            notebook.grid(row=0, column=i, sticky="nsew", padx=2, pady=2)
-
-            for item in columns[col_idx]:
-                panel = JsonPanel(notebook, item, on_config_change=self._save_config)
-                tab_name = os.path.basename(item["path"]) or item["path"]
-                notebook.add(panel, text=tab_name)
-                self.json_panels.append(panel)
-
-                if item.get("detached"):
-                    self.root.after(100, panel._detach)
-
-        self._json_frame.rowconfigure(0, weight=1)
+    def _place_panel(self, item_type, item, x, y, w, h):
+        if item_type == "log":
+            panel = LogPanel(self._content_frame, item, on_config_change=self._save_config)
+            panel.place(x=x, y=y, width=w, height=h)
+            panel.enable_drag_resize(self._content_frame)
+            self.panels.append(panel)
+        else:
+            panel = JsonPanel(self._content_frame, item, on_config_change=self._save_config)
+            panel.place(x=x, y=y, width=w, height=h)
+            panel.enable_drag_resize(self._content_frame)
+            self.json_panels.append(panel)
 
     def _read_config(self):
         if not os.path.isfile(self.config_path):
@@ -602,7 +651,7 @@ class LogMonitorApp:
         if not file_path:
             return
 
-        dialog = _AddFileDialog(self.root, file_path, self.max_columns)
+        dialog = _AddFileDialog(self.root, file_path)
         self.root.wait_window(dialog)
 
         if not dialog.result:
@@ -618,7 +667,6 @@ class LogMonitorApp:
         if existing:
             existing["lines"] = dialog.result["lines"]
             existing["refresh_ms"] = dialog.result["refresh_ms"]
-            existing["column"] = dialog.result["column"]
             existing["order"] = dialog.result["order"]
         else:
             logs.append(
@@ -626,7 +674,6 @@ class LogMonitorApp:
                     "path": file_path,
                     "lines": dialog.result["lines"],
                     "refresh_ms": dialog.result["refresh_ms"],
-                    "column": dialog.result["column"],
                     "order": dialog.result["order"],
                 }
             )
@@ -674,32 +721,33 @@ class LogMonitorApp:
             messagebox.showinfo("提示", "JSON文件中没有可提取的字段。")
             return
 
-        dialog = _FieldPickerDialog(self.root, file_path, available_fields, self.json_max_columns)
-        self.root.wait_window(dialog)
-
-        if not dialog.result:
-            return
-
         config = self._read_config()
         if config is None:
             return
 
         json_monitors = config.setdefault("json_monitors", [])
-
         existing = next(
             (item for item in json_monitors if item.get("path") == file_path), None
         )
+        existing_aliases = existing.get("field_aliases", {}) if existing else None
+
+        dialog = _FieldPickerDialog(self.root, file_path, available_fields, existing_aliases)
+        self.root.wait_window(dialog)
+
+        if not dialog.result:
+            return
+
         if existing:
             existing["fields"] = dialog.result["fields"]
+            existing["field_aliases"] = dialog.result["field_aliases"]
             existing["refresh_ms"] = dialog.result["refresh_ms"]
-            existing["column"] = dialog.result["column"]
         else:
             json_monitors.append(
                 {
                     "path": file_path,
                     "fields": dialog.result["fields"],
+                    "field_aliases": dialog.result["field_aliases"],
                     "refresh_ms": dialog.result["refresh_ms"],
-                    "column": dialog.result["column"],
                 }
             )
 
@@ -723,6 +771,51 @@ class LogMonitorApp:
             return
 
         del json_monitors[dialog.result_index]
+        self._write_config(config)
+        self._reload()
+
+    def _edit_json(self):
+        config = self._read_config()
+        if config is None:
+            return
+
+        json_monitors = config.get("json_monitors", [])
+        if not json_monitors:
+            messagebox.showinfo("提示", "当前没有监控的JSON文件。")
+            return
+
+        dialog = _EditJsonDialog(self.root, json_monitors)
+        self.root.wait_window(dialog)
+
+        if dialog.result_index is None:
+            return
+
+        item = json_monitors[dialog.result_index]
+        file_path = item["path"]
+
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception as e:
+            messagebox.showerror("错误", f"无法读取JSON文件: {e}")
+            return
+
+        available_fields = self._extract_fields(data)
+        if not available_fields:
+            messagebox.showinfo("提示", "JSON文件中没有可提取的字段。")
+            return
+
+        existing_aliases = item.get("field_aliases", {})
+        field_dialog = _FieldPickerDialog(self.root, file_path, available_fields, existing_aliases)
+        self.root.wait_window(field_dialog)
+
+        if not field_dialog.result:
+            return
+
+        item["fields"] = field_dialog.result["fields"]
+        item["field_aliases"] = field_dialog.result["field_aliases"]
+        item["refresh_ms"] = field_dialog.result["refresh_ms"]
+
         self._write_config(config)
         self._reload()
 
@@ -752,15 +845,6 @@ class LogMonitorApp:
                 except Exception:
                     pass
         self._save_config()
-        if self._paned is not None:
-            try:
-                pos = self._paned.sashpos(0)
-                config = self._read_config()
-                if config is not None:
-                    config["sash_position"] = pos
-                    self._write_config(config)
-            except Exception:
-                pass
         self._clear_panels()
         self.root.destroy()
 
@@ -769,12 +853,11 @@ class LogMonitorApp:
 
 
 class _AddFileDialog(tk.Toplevel):
-    def __init__(self, parent, file_path, max_columns=3):
+    def __init__(self, parent, file_path):
         super().__init__(parent)
         self.title("添加日志文件")
         self.resizable(False, False)
         self.result = None
-        self._max_columns = max_columns
 
         frame = ttk.Frame(self, padding=12)
         frame.pack(fill=tk.BOTH, expand=True)
@@ -795,13 +878,7 @@ class _AddFileDialog(tk.Toplevel):
             frame, from_=100, to=60000, increment=100, textvariable=self.refresh_var, width=12
         ).grid(row=2, column=1, sticky="w", pady=2, padx=(8, 0))
 
-        ttk.Label(frame, text="所在列:").grid(row=3, column=0, sticky="w", pady=2)
-        self.column_var = tk.IntVar(value=1)
-        ttk.Spinbox(frame, from_=1, to=self._max_columns, textvariable=self.column_var, width=12).grid(
-            row=3, column=1, sticky="w", pady=2, padx=(8, 0)
-        )
-
-        ttk.Label(frame, text="排序:").grid(row=4, column=0, sticky="w", pady=2)
+        ttk.Label(frame, text="排序:").grid(row=3, column=0, sticky="w", pady=2)
         self._order_map = {"旧→新": "asc", "新→旧": "desc"}
         self._order_display = {v: k for k, v in self._order_map.items()}
         self.order_var = tk.StringVar(value=self._order_display["asc"])
@@ -811,10 +888,10 @@ class _AddFileDialog(tk.Toplevel):
             values=list(self._order_map.keys()),
             state="readonly",
             width=10,
-        ).grid(row=4, column=1, sticky="w", pady=2, padx=(8, 0))
+        ).grid(row=3, column=1, sticky="w", pady=2, padx=(8, 0))
 
         btn_frame = ttk.Frame(frame)
-        btn_frame.grid(row=5, column=0, columnspan=2, pady=(12, 0))
+        btn_frame.grid(row=4, column=0, columnspan=2, pady=(12, 0))
         ttk.Button(btn_frame, text="确定", command=self._on_confirm).pack(
             side=tk.LEFT, padx=(0, 8)
         )
@@ -828,7 +905,6 @@ class _AddFileDialog(tk.Toplevel):
         self.result = {
             "lines": self.lines_var.get(),
             "refresh_ms": self.refresh_var.get(),
-            "column": self.column_var.get(),
             "order": self._order_map[self.order_var.get()],
         }
         self.destroy()
@@ -857,8 +933,7 @@ class _DeleteFileDialog(tk.Toplevel):
 
         for item in log_items:
             path = item.get("path", "")
-            column = item.get("column", 1)
-            self.listbox.insert(tk.END, f"[第{column}列] {path}")
+            self.listbox.insert(tk.END, path)
 
         btn_frame = ttk.Frame(frame)
         btn_frame.pack(pady=(12, 0))
@@ -881,20 +956,22 @@ class _DeleteFileDialog(tk.Toplevel):
 
 
 class _FieldPickerDialog(tk.Toplevel):
-    def __init__(self, parent, json_path, available_fields, max_columns=3):
+    def __init__(self, parent, json_path, available_fields, existing_aliases=None):
         super().__init__(parent)
         self.title("选择JSON字段")
         self.result = None
-        self._max_columns = max_columns
+        self._aliases = dict(existing_aliases) if existing_aliases else {}
 
         frame = ttk.Frame(self, padding=12)
         frame.pack(fill=tk.BOTH, expand=True)
 
         ttk.Label(frame, text=f"JSON: {json_path}").pack(anchor="w", pady=(0, 4))
+        hint_frame = ttk.Frame(frame)
+        hint_frame.pack(fill=tk.X, pady=(0, 6))
         ttk.Label(
-            frame,
-            text=f"选择要监控的字段（最多 {MAX_JSON_FIELDS} 个）:",
-        ).pack(anchor="w", pady=(0, 6))
+            hint_frame,
+            text=f"选择要监控的字段（最多 {MAX_JSON_FIELDS} 个），双击字段可设置别名:",
+        ).pack(side=tk.LEFT)
 
         list_frame = ttk.Frame(frame)
         list_frame.pack(fill=tk.BOTH, expand=True)
@@ -911,33 +988,23 @@ class _FieldPickerDialog(tk.Toplevel):
 
         self._fields = available_fields
         for field in available_fields:
-            self.listbox.insert(tk.END, field)
+            alias = self._aliases.get(field, "")
+            display = f"{field}  [{alias}]" if alias else field
+            self.listbox.insert(tk.END, display)
 
         self.listbox.bind("<<ListboxSelect>>", self._on_selection_change)
+        self.listbox.bind("<Double-Button-1>", self._on_double_click)
 
-        settings_frame = ttk.Frame(frame)
-        settings_frame.pack(fill=tk.X, pady=(8, 0))
-
-        ttk.Label(settings_frame, text="刷新间隔(ms):").pack(side=tk.LEFT)
+        ttk.Label(frame, text="刷新间隔(ms):").pack(anchor="w", pady=(8, 2))
         self.refresh_var = tk.IntVar(value=1000)
         ttk.Spinbox(
-            settings_frame,
+            frame,
             from_=100,
             to=60000,
             increment=100,
             textvariable=self.refresh_var,
             width=10,
-        ).pack(side=tk.LEFT, padx=(4, 12))
-
-        ttk.Label(settings_frame, text="所在列:").pack(side=tk.LEFT)
-        self.column_var = tk.IntVar(value=1)
-        ttk.Spinbox(
-            settings_frame,
-            from_=1,
-            to=self._max_columns,
-            textvariable=self.column_var,
-            width=5,
-        ).pack(side=tk.LEFT, padx=(4, 0))
+        ).pack(anchor="w")
 
         self._count_label = ttk.Label(frame, text="已选: 0")
         self._count_label.pack(anchor="w", pady=(4, 0))
@@ -966,6 +1033,26 @@ class _FieldPickerDialog(tk.Toplevel):
             self.listbox.selection_clear(selected[-1])
             self._count_label.config(text=f"已选: {MAX_JSON_FIELDS}（最多{MAX_JSON_FIELDS}个）")
 
+    def _on_double_click(self, event):
+        idx = self.listbox.nearest(event.y)
+        if idx < 0 or idx >= len(self._fields):
+            return
+        field = self._fields[idx]
+        current_alias = self._aliases.get(field, "")
+
+        alias_dialog = _AliasDialog(self, field, current_alias)
+        self.wait_window(alias_dialog)
+
+        if alias_dialog.result is not None:
+            new_alias = alias_dialog.result.strip()
+            if new_alias:
+                self._aliases[field] = new_alias
+            else:
+                self._aliases.pop(field, None)
+            display = f"{field}  [{new_alias}]" if new_alias else field
+            self.listbox.delete(idx)
+            self.listbox.insert(idx, display)
+
     def _on_confirm(self):
         selected = self.listbox.curselection()
         if not selected:
@@ -973,9 +1060,53 @@ class _FieldPickerDialog(tk.Toplevel):
             return
         self.result = {
             "fields": [self._fields[i] for i in selected],
+            "field_aliases": self._aliases,
             "refresh_ms": self.refresh_var.get(),
-            "column": self.column_var.get(),
         }
+        self.destroy()
+
+
+class _AliasDialog(tk.Toplevel):
+    def __init__(self, parent, field_name, current_alias):
+        super().__init__(parent)
+        self.title("设置字段别名")
+        self.resizable(False, False)
+        self.result = None
+
+        frame = ttk.Frame(self, padding=12)
+        frame.pack(fill=tk.BOTH, expand=True)
+
+        ttk.Label(frame, text=f"字段: {field_name}").pack(anchor="w", pady=(0, 6))
+        ttk.Label(frame, text="别名:").pack(anchor="w")
+        self._entry = ttk.Entry(frame, width=30)
+        self._entry.pack(fill=tk.X, pady=(2, 8))
+        self._entry.insert(0, current_alias)
+        self._entry.focus_set()
+        self._entry.select_range(0, tk.END)
+
+        ttk.Label(frame, text="留空则使用字段原名", foreground="gray").pack(anchor="w")
+
+        btn_frame = ttk.Frame(frame)
+        btn_frame.pack(pady=(12, 0))
+        ttk.Button(btn_frame, text="确定", command=self._on_confirm).pack(
+            side=tk.LEFT, padx=(0, 8)
+        )
+        ttk.Button(btn_frame, text="取消", command=self.destroy).pack(side=tk.LEFT)
+
+        self.bind("<Return>", lambda e: self._on_confirm())
+        self.bind("<Escape>", lambda e: self.destroy())
+
+        self.transient(parent)
+        self.grab_set()
+        self.update_idletasks()
+        w = self.winfo_width()
+        h = self.winfo_height()
+        x = parent.winfo_rootx() + (parent.winfo_width() - w) // 2
+        y = parent.winfo_rooty() + (parent.winfo_height() - h) // 2
+        self.geometry("+%d+%d" % (x, y))
+
+    def _on_confirm(self):
+        self.result = self._entry.get()
         self.destroy()
 
 
@@ -1004,8 +1135,7 @@ class _DeleteJsonDialog(tk.Toplevel):
 
         for item in json_items:
             path = item.get("path", "")
-            column = item.get("column", 1)
-            self.listbox.insert(tk.END, f"[第{column}列] {path}")
+            self.listbox.insert(tk.END, path)
 
         btn_frame = ttk.Frame(frame)
         btn_frame.pack(pady=(12, 0))
@@ -1019,6 +1149,56 @@ class _DeleteJsonDialog(tk.Toplevel):
         self.geometry("+%d+%d" % (parent.winfo_rootx() + 50, parent.winfo_rooty() + 50))
 
     def _on_delete(self):
+        selection = self.listbox.curselection()
+        if not selection:
+            messagebox.showwarning("提示", "请先选择一个JSON监控。")
+            return
+        self.result_index = selection[0]
+        self.destroy()
+
+
+class _EditJsonDialog(tk.Toplevel):
+    def __init__(self, parent, json_items):
+        super().__init__(parent)
+        self.title("编辑JSON监控")
+        self.resizable(False, False)
+        self.result_index = None
+
+        frame = ttk.Frame(self, padding=12)
+        frame.pack(fill=tk.BOTH, expand=True)
+
+        ttk.Label(frame, text="选择要编辑的JSON监控:").pack(anchor="w", pady=(0, 6))
+
+        list_frame = ttk.Frame(frame)
+        list_frame.pack(fill=tk.BOTH, expand=True)
+
+        self.listbox = tk.Listbox(list_frame, width=60, height=10)
+        scrollbar = ttk.Scrollbar(
+            list_frame, orient=tk.VERTICAL, command=self.listbox.yview
+        )
+        self.listbox.configure(yscrollcommand=scrollbar.set)
+        self.listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        for item in json_items:
+            path = item.get("path", "")
+            fields = item.get("fields", [])
+            alias_count = len(item.get("field_aliases", {}))
+            display = f"{path}  (字段: {len(fields)}, 别名: {alias_count})"
+            self.listbox.insert(tk.END, display)
+
+        btn_frame = ttk.Frame(frame)
+        btn_frame.pack(pady=(12, 0))
+        ttk.Button(btn_frame, text="编辑", command=self._on_edit).pack(
+            side=tk.LEFT, padx=(0, 8)
+        )
+        ttk.Button(btn_frame, text="取消", command=self.destroy).pack(side=tk.LEFT)
+
+        self.transient(parent)
+        self.grab_set()
+        self.geometry("+%d+%d" % (parent.winfo_rootx() + 50, parent.winfo_rooty() + 50))
+
+    def _on_edit(self):
         selection = self.listbox.curselection()
         if not selection:
             messagebox.showwarning("提示", "请先选择一个JSON监控。")
