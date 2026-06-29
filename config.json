@@ -50,5 +50,20 @@
             "refresh_ms": 1000
         }
     ],
-    "sash_position": 273
+    "sash_position": 273,
+    "table_monitors": [
+        {
+            "path": "D:/Dev/Python/com.fl.logmonitor/标签表.csv",
+            "max_rows": 100,
+            "refresh_ms": 1000,
+            "columns": [
+                "﻿本端:Rack_[38]_[JiNanGD-P]_[XG3/0/1]",
+                "对端:Rack_[QDGD-P]_[XG3/0/1]"
+            ],
+            "column_aliases": {
+                "﻿本端:Rack_[38]_[JiNanGD-P]_[XG3/0/1]": "本",
+                "对端:Rack_[QDGD-P]_[XG3/0/1]": "对端"
+            }
+        }
+    ]
 }

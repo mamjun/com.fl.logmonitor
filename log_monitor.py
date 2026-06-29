@@ -6,6 +6,7 @@ from tkinter import filedialog, messagebox, ttk
 
 from log_panel import LogPanel
 from json_panel import JsonPanel, MAX_JSON_FIELDS, _FieldPickerDialog, _AliasDialog
+from table_panel import TablePanel, _CsvColumnPickerDialog
 
 PANEL_DEFAULT_W = 400
 PANEL_DEFAULT_H = 300
@@ -19,8 +20,10 @@ class LogMonitorApp:
         self.root.geometry("1200x800")
 
         self.config_path = config_path
+        self._config = None
         self.panels = []
         self.json_panels = []
+        self.table_panels = []
         self._content_frame = None
         self._empty_label = None
 
@@ -50,6 +53,23 @@ class LogMonitorApp:
             side=tk.LEFT
         )
         ttk.Separator(toolbar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=4)
+        ttk.Button(toolbar, text="添加表格", command=self._add_table).pack(
+            side=tk.LEFT, padx=(4, 4)
+        )
+        ttk.Button(toolbar, text="编辑表格", command=self._edit_table).pack(
+            side=tk.LEFT, padx=(0, 4)
+        )
+        ttk.Button(toolbar, text="删除表格", command=self._delete_table).pack(
+            side=tk.LEFT
+        )
+        ttk.Separator(toolbar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=4)
+        ttk.Button(toolbar, text="保存位置", command=self._save_positions).pack(
+            side=tk.LEFT, padx=4
+        )
+        ttk.Button(toolbar, text="重置位置", command=self._reset_positions).pack(
+            side=tk.LEFT, padx=(0, 4)
+        )
+        ttk.Separator(toolbar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=4)
         ttk.Button(toolbar, text="重新载入", command=self._reload).pack(
             side=tk.LEFT, padx=4
         )
@@ -77,6 +97,17 @@ class LogMonitorApp:
                 pass
         self.json_panels.clear()
 
+        for panel in self.table_panels:
+            try:
+                panel.stop_refresh()
+                if panel._detached_panel is not None:
+                    panel._detached_panel.stop_refresh()
+                if panel._toplevel is not None:
+                    panel._toplevel.destroy()
+            except Exception:
+                pass
+        self.table_panels.clear()
+
         if self._content_frame is not None:
             self._content_frame.destroy()
             self._content_frame = None
@@ -87,7 +118,11 @@ class LogMonitorApp:
 
     def _compute_default_layout(self, count):
         positions = []
-        cols = max(1, int(self.root.winfo_width() / (PANEL_DEFAULT_W + PANEL_GAP * 2)))
+        self.root.update()
+        win_width = self.root.winfo_width()
+        if win_width <= 1:
+            win_width = 1200
+        cols = max(1, int(win_width / (PANEL_DEFAULT_W + PANEL_GAP * 2)))
         for i in range(count):
             col = i % cols
             row = i // cols
@@ -102,9 +137,16 @@ class LogMonitorApp:
         config = self._read_config()
         if config is None:
             return
+        self._config = config
+
+        win_w = config.get("window_width", 0)
+        win_h = config.get("window_height", 0)
+        if win_w > 0 and win_h > 0:
+            self.root.geometry(f"{win_w}x{win_h}")
 
         log_items = config.get("logs", [])
         json_items = config.get("json_monitors", [])
+        table_items = config.get("table_monitors", [])
 
         all_items = []
         for item in log_items:
@@ -113,6 +155,9 @@ class LogMonitorApp:
         for item in json_items:
             if item.get("path"):
                 all_items.append(("json", item))
+        for item in table_items:
+            if item.get("path"):
+                all_items.append(("table", item))
 
         if not all_items:
             self._empty_label = ttk.Label(
@@ -150,12 +195,19 @@ class LogMonitorApp:
                     panel.place_forget()
                     self.panels.append(panel)
                     self.root.after(100, panel._detach)
-                else:
+                elif item_type == "json":
                     panel = JsonPanel(self._content_frame, item, on_config_change=self._save_config)
                     panel.enable_drag_resize(self._content_frame)
                     panel.place(x=0, y=0, width=1, height=1)
                     panel.place_forget()
                     self.json_panels.append(panel)
+                    self.root.after(100, panel._detach)
+                else:
+                    panel = TablePanel(self._content_frame, item, on_config_change=self._save_config)
+                    panel.enable_drag_resize(self._content_frame)
+                    panel.place(x=0, y=0, width=1, height=1)
+                    panel.place_forget()
+                    self.table_panels.append(panel)
                     self.root.after(100, panel._detach)
 
     def _place_panel(self, item_type, item, x, y, w, h):
@@ -164,11 +216,16 @@ class LogMonitorApp:
             panel.place(x=x, y=y, width=w, height=h)
             panel.enable_drag_resize(self._content_frame)
             self.panels.append(panel)
-        else:
+        elif item_type == "json":
             panel = JsonPanel(self._content_frame, item, on_config_change=self._save_config)
             panel.place(x=x, y=y, width=w, height=h)
             panel.enable_drag_resize(self._content_frame)
             self.json_panels.append(panel)
+        else:
+            panel = TablePanel(self._content_frame, item, on_config_change=self._save_config)
+            panel.place(x=x, y=y, width=w, height=h)
+            panel.enable_drag_resize(self._content_frame)
+            self.table_panels.append(panel)
 
     def _read_config(self):
         if not os.path.isfile(self.config_path):
@@ -189,9 +246,8 @@ class LogMonitorApp:
             messagebox.showerror("写入失败", f"无法写入配置文件: {e}")
 
     def _save_config(self):
-        config = self._read_config()
-        if config is not None:
-            self._write_config(config)
+        if self._config is not None:
+            self._write_config(self._config)
 
     def _add_file(self):
         file_path = filedialog.askopenfilename(
@@ -381,20 +437,188 @@ class LogMonitorApp:
                     fields.append(full_key)
         return fields
 
-    def _on_close(self):
-        for panel in self.panels + self.json_panels:
+    def _add_table(self):
+        file_path = filedialog.askopenfilename(
+            title="选择CSV文件",
+            filetypes=[("CSV文件", "*.csv"), ("所有文件", "*.*")],
+        )
+        if not file_path:
+            return
+
+        import csv
+        try:
+            with open(file_path, "r", encoding="utf-8", errors="replace", newline="") as f:
+                reader = csv.reader(f)
+                header = next(reader, None)
+                if header is None:
+                    messagebox.showinfo("提示", "CSV文件为空。")
+                    return
+                available_columns = [col.strip() or f"列{i + 1}" for i, col in enumerate(header)]
+        except Exception as e:
+            messagebox.showerror("错误", f"无法读取CSV文件: {e}")
+            return
+
+        config = self._read_config()
+        if config is None:
+            return
+
+        table_monitors = config.setdefault("table_monitors", [])
+        existing = next(
+            (item for item in table_monitors if item.get("path") == file_path), None
+        )
+
+        existing_columns = existing.get("columns") if existing else None
+        existing_aliases = existing.get("column_aliases") if existing else None
+        existing_max_rows = existing.get("max_rows") if existing else None
+        existing_refresh_ms = existing.get("refresh_ms") if existing else None
+
+        dialog = _CsvColumnPickerDialog(
+            self.root,
+            file_path,
+            available_columns,
+            existing_columns=existing_columns,
+            existing_aliases=existing_aliases,
+            existing_max_rows=existing_max_rows,
+            existing_refresh_ms=existing_refresh_ms,
+        )
+        self.root.wait_window(dialog)
+
+        if not dialog.result:
+            return
+
+        if existing:
+            existing["columns"] = dialog.result["columns"]
+            existing["column_aliases"] = dialog.result["column_aliases"]
+            existing["max_rows"] = dialog.result["max_rows"]
+            existing["refresh_ms"] = dialog.result["refresh_ms"]
+        else:
+            table_monitors.append(
+                {
+                    "path": file_path,
+                    "columns": dialog.result["columns"],
+                    "column_aliases": dialog.result["column_aliases"],
+                    "max_rows": dialog.result["max_rows"],
+                    "refresh_ms": dialog.result["refresh_ms"],
+                }
+            )
+
+        self._write_config(config)
+        self._reload()
+
+    def _edit_table(self):
+        config = self._read_config()
+        if config is None:
+            return
+
+        table_monitors = config.get("table_monitors", [])
+        if not table_monitors:
+            messagebox.showinfo("提示", "当前没有监控的CSV文件。")
+            return
+
+        dialog = _DeleteTableDialog(self.root, table_monitors)
+        self.root.wait_window(dialog)
+
+        if dialog.result_index is None:
+            return
+
+        item = table_monitors[dialog.result_index]
+        file_path = item["path"]
+
+        import csv
+        try:
+            with open(file_path, "r", encoding="utf-8", errors="replace", newline="") as f:
+                reader = csv.reader(f)
+                header = next(reader, None)
+                if header is None:
+                    messagebox.showinfo("提示", "CSV文件为空。")
+                    return
+                available_columns = [col.strip() or f"列{i + 1}" for i, col in enumerate(header)]
+        except Exception as e:
+            messagebox.showerror("错误", f"无法读取CSV文件: {e}")
+            return
+
+        config_dialog = _CsvColumnPickerDialog(
+            self.root,
+            file_path,
+            available_columns,
+            existing_columns=item.get("columns"),
+            existing_aliases=item.get("column_aliases"),
+            existing_max_rows=item.get("max_rows"),
+            existing_refresh_ms=item.get("refresh_ms"),
+        )
+        self.root.wait_window(config_dialog)
+
+        if not config_dialog.result:
+            return
+
+        item["columns"] = config_dialog.result["columns"]
+        item["column_aliases"] = config_dialog.result["column_aliases"]
+        item["max_rows"] = config_dialog.result["max_rows"]
+        item["refresh_ms"] = config_dialog.result["refresh_ms"]
+
+        self._write_config(config)
+        self._reload()
+
+    def _delete_table(self):
+        config = self._read_config()
+        if config is None:
+            return
+
+        table_monitors = config.get("table_monitors", [])
+        if not table_monitors:
+            messagebox.showinfo("提示", "当前没有监控的CSV文件。")
+            return
+
+        dialog = _DeleteTableDialog(self.root, table_monitors)
+        self.root.wait_window(dialog)
+
+        if dialog.result_index is None:
+            return
+
+        del table_monitors[dialog.result_index]
+        self._write_config(config)
+        self._reload()
+
+    def _save_positions(self):
+        if self._config is None:
+            return
+        self._config["window_width"] = self.root.winfo_width()
+        self._config["window_height"] = self.root.winfo_height()
+        for panel in self.panels + self.json_panels + self.table_panels:
             if panel._toplevel is not None:
                 try:
-                    geom = panel._toplevel.geometry()
-                    panel._config_item["geometry"] = geom
+                    panel._config_item["geometry"] = panel._toplevel.geometry()
                 except Exception:
                     pass
+                continue
+            try:
+                panel._config_item["x"] = panel.winfo_x()
+                panel._config_item["y"] = panel.winfo_y()
+                panel._config_item["width"] = panel.winfo_width()
+                panel._config_item["height"] = panel.winfo_height()
+            except Exception:
+                pass
+        self._write_config(self._config)
+
+    def _reset_positions(self):
+        if self._config is None:
+            return
+        for key in ("window_width", "window_height"):
+            self._config.pop(key, None)
+        for section in ("logs", "json_monitors", "table_monitors"):
+            for item in self._config.get(section, []):
+                for key in ("x", "y", "width", "height", "geometry", "detached"):
+                    item.pop(key, None)
+        self._write_config(self._config)
+        self._reload()
+
+    def _on_close(self):
+        for panel in self.panels + self.json_panels + self.table_panels:
             if panel._detached_panel is not None:
                 try:
                     panel._detached_panel.stop_refresh()
                 except Exception:
                     pass
-        self._save_config()
         self._clear_panels()
         self.root.destroy()
 
@@ -597,6 +821,55 @@ class _EditJsonDialog(tk.Toplevel):
         selection = self.listbox.curselection()
         if not selection:
             messagebox.showwarning("提示", "请先选择一个JSON监控。")
+            return
+        self.result_index = selection[0]
+        self.destroy()
+
+
+class _DeleteTableDialog(tk.Toplevel):
+    def __init__(self, parent, table_items):
+        super().__init__(parent)
+        self.title("选择CSV监控")
+        self.resizable(False, False)
+        self.result_index = None
+
+        frame = ttk.Frame(self, padding=12)
+        frame.pack(fill=tk.BOTH, expand=True)
+
+        ttk.Label(frame, text="选择CSV监控:").pack(anchor="w", pady=(0, 6))
+
+        list_frame = ttk.Frame(frame)
+        list_frame.pack(fill=tk.BOTH, expand=True)
+
+        self.listbox = tk.Listbox(list_frame, width=60, height=10)
+        scrollbar = ttk.Scrollbar(
+            list_frame, orient=tk.VERTICAL, command=self.listbox.yview
+        )
+        self.listbox.configure(yscrollcommand=scrollbar.set)
+        self.listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        for item in table_items:
+            path = item.get("path", "")
+            max_rows = item.get("max_rows", "")
+            display = f"{path}  (最大行数: {max_rows})"
+            self.listbox.insert(tk.END, display)
+
+        btn_frame = ttk.Frame(frame)
+        btn_frame.pack(pady=(12, 0))
+        ttk.Button(btn_frame, text="确定", command=self._on_select).pack(
+            side=tk.LEFT, padx=(0, 8)
+        )
+        ttk.Button(btn_frame, text="取消", command=self.destroy).pack(side=tk.LEFT)
+
+        self.transient(parent)
+        self.grab_set()
+        self.geometry("+%d+%d" % (parent.winfo_rootx() + 50, parent.winfo_rooty() + 50))
+
+    def _on_select(self):
+        selection = self.listbox.curselection()
+        if not selection:
+            messagebox.showwarning("提示", "请先选择一个CSV监控。")
             return
         self.result_index = selection[0]
         self.destroy()
