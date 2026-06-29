@@ -2,3 +2,5 @@ dist
 build
 *.spec
 *.exe
+*.pyc
+__pycache__
