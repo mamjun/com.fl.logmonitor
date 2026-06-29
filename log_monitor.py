@@ -12,12 +12,115 @@ PANEL_DEFAULT_W = 400
 PANEL_DEFAULT_H = 300
 PANEL_GAP = 10
 
+# ── 现代暗色主题配色 ──────────────────────────────────────────────
+BG_DARK = "#0d1117"
+BG_SURFACE = "#161b22"
+BG_ELEVATED = "#1c2128"
+BG_HEADER_LOG = "#1a3a4a"
+BG_HEADER_JSON = "#1a3a2a"
+BG_HEADER_TABLE = "#3a2a1a"
+ACCENT_BLUE = "#58a6ff"
+ACCENT_GREEN = "#3fb950"
+ACCENT_ORANGE = "#f0883e"
+ACCENT_RED = "#f85149"
+ACCENT_PURPLE = "#a371f7"
+TEXT_PRIMARY = "#c9d1d9"
+TEXT_SECONDARY = "#8b949e"
+BORDER_COLOR = "#30363d"
+BORDER_HOVER = "#58a6ff"
+
+
+def _apply_dark_theme(root):
+    style = ttk.Style(root)
+    style.theme_use("clam")
+
+    style.configure(".", background=BG_DARK, foreground=TEXT_PRIMARY,
+                    fieldbackground=BG_SURFACE, borderwidth=0, font=("Microsoft YaHei UI", 9))
+
+    style.configure("TFrame", background=BG_DARK)
+    style.configure("TLabelframe", background=BG_DARK, bordercolor=BORDER_COLOR,
+                    relief="solid", borderwidth=1)
+    style.configure("TLabelframe.Label", background=BG_DARK, foreground=TEXT_PRIMARY)
+
+    style.configure("TLabel", background=BG_DARK, foreground=TEXT_PRIMARY)
+    style.configure("TButton", background=BG_ELEVATED, foreground=TEXT_PRIMARY,
+                    borderwidth=1, bordercolor=BORDER_COLOR, relief="solid",
+                    padding=(10, 4), font=("Microsoft YaHei UI", 9))
+    style.map("TButton",
+              background=[("active", BG_SURFACE), ("pressed", BG_ELEVATED)],
+              bordercolor=[("active", ACCENT_BLUE), ("hover", ACCENT_BLUE)],
+              foreground=[("active", ACCENT_BLUE)])
+
+    style.configure("Toolbar.TButton", background=BG_SURFACE, foreground=TEXT_PRIMARY,
+                    borderwidth=0, relief="flat", padding=(8, 5),
+                    font=("Microsoft YaHei UI", 9, "bold"))
+    style.map("Toolbar.TButton",
+              background=[("active", BG_ELEVATED)],
+              foreground=[("active", ACCENT_BLUE)])
+
+    style.configure("Danger.TButton", background=BG_ELEVATED, foreground=ACCENT_RED,
+                    borderwidth=1, bordercolor=ACCENT_RED, relief="solid",
+                    padding=(10, 4), font=("Microsoft YaHei UI", 9))
+    style.map("Danger.TButton",
+              background=[("active", "#3d1117")],
+              foreground=[("active", "#ff6b6b")])
+
+    style.configure("TEntry", fieldbackground=BG_SURFACE, foreground=TEXT_PRIMARY,
+                    insertcolor=TEXT_PRIMARY, borderwidth=1, relief="solid",
+                    padding=4)
+    style.configure("TSpinbox", fieldbackground=BG_SURFACE, foreground=TEXT_PRIMARY,
+                    arrowcolor=TEXT_PRIMARY, borderwidth=1, relief="solid",
+                    background=BG_ELEVATED)
+    style.map("TSpinbox", fieldbackground=[("readonly", BG_SURFACE)])
+
+    style.configure("TCombobox", fieldbackground=BG_SURFACE, foreground=TEXT_PRIMARY,
+                    arrowcolor=TEXT_PRIMARY, borderwidth=1, relief="solid",
+                    background=BG_ELEVATED)
+    style.map("TCombobox",
+              fieldbackground=[("readonly", BG_SURFACE)],
+              selectbackground=[("readonly", ACCENT_BLUE)],
+              selectforeground=[("readonly", "#ffffff")])
+
+    root.option_add("*TCombobox*Listbox.background", BG_SURFACE)
+    root.option_add("*TCombobox*Listbox.foreground", TEXT_PRIMARY)
+    root.option_add("*TCombobox*Listbox.selectBackground", ACCENT_BLUE)
+    root.option_add("*TCombobox*Listbox.selectForeground", "#ffffff")
+
+    style.configure("TSeparator", background=BORDER_COLOR)
+
+    style.configure("TScrollbar", background=BG_ELEVATED, troughcolor=BG_DARK,
+                    arrowcolor=TEXT_SECONDARY, borderwidth=0, relief="flat",
+                    arrowsize=14)
+    style.map("TScrollbar",
+              background=[("active", BG_SURFACE)],
+              arrowcolor=[("active", ACCENT_BLUE)])
+
+    style.configure("Treeview", background=BG_SURFACE, foreground=TEXT_PRIMARY,
+                    fieldbackground=BG_SURFACE, borderwidth=0, rowheight=26)
+    style.configure("Treeview.Heading", background=BG_ELEVATED, foreground=TEXT_PRIMARY,
+                    borderwidth=1, relief="solid", font=("Microsoft YaHei UI", 9, "bold"))
+    style.map("Treeview",
+              background=[("selected", ACCENT_BLUE)],
+              foreground=[("selected", "#ffffff")])
+    style.map("Treeview.Heading",
+              background=[("active", BG_SURFACE)])
+
+    style.configure("Status.TLabel", background=BG_SURFACE, foreground=TEXT_SECONDARY,
+                    font=("Microsoft YaHei UI", 8), padding=(12, 3))
+
+    style.configure("Card.TFrame", background=BG_DARK, borderwidth=0, relief="flat")
+
+    root.configure(bg=BG_DARK)
+
 
 class LogMonitorApp:
     def __init__(self, config_path="config.json"):
         self.root = tk.Tk()
-        self.root.title("日志监控器")
+        self.root.title("📊 日志监控器")
         self.root.geometry("1200x800")
+        self.root.configure(bg=BG_DARK)
+
+        _apply_dark_theme(self.root)
 
         self.config_path = config_path
         self._config = None
@@ -26,53 +129,97 @@ class LogMonitorApp:
         self.table_panels = []
         self._content_frame = None
         self._empty_label = None
+        self._status_label = None
 
         self._build_toolbar()
+        self._build_status_bar()
         self._reload()
 
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
 
     def _build_toolbar(self):
-        toolbar = ttk.Frame(self.root)
-        toolbar.pack(fill=tk.X, padx=4, pady=4)
+        outer = tk.Frame(self.root, bg=BG_SURFACE, highlightthickness=1,
+                         highlightbackground=BORDER_COLOR)
+        outer.pack(fill=tk.X, padx=6, pady=(6, 2))
 
-        ttk.Button(toolbar, text="添加日志", command=self._add_file).pack(
-            side=tk.LEFT, padx=(0, 4)
-        )
-        ttk.Button(toolbar, text="删除日志", command=self._delete_file).pack(
-            side=tk.LEFT, padx=(0, 12)
-        )
-        ttk.Separator(toolbar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=4)
-        ttk.Button(toolbar, text="添加JSON", command=self._add_json).pack(
-            side=tk.LEFT, padx=(4, 4)
-        )
-        ttk.Button(toolbar, text="编辑JSON", command=self._edit_json).pack(
-            side=tk.LEFT, padx=(0, 4)
-        )
-        ttk.Button(toolbar, text="删除JSON", command=self._delete_json).pack(
-            side=tk.LEFT
-        )
-        ttk.Separator(toolbar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=4)
-        ttk.Button(toolbar, text="添加表格", command=self._add_table).pack(
-            side=tk.LEFT, padx=(4, 4)
-        )
-        ttk.Button(toolbar, text="编辑表格", command=self._edit_table).pack(
-            side=tk.LEFT, padx=(0, 4)
-        )
-        ttk.Button(toolbar, text="删除表格", command=self._delete_table).pack(
-            side=tk.LEFT
-        )
-        ttk.Separator(toolbar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=4)
-        ttk.Button(toolbar, text="保存位置", command=self._save_positions).pack(
-            side=tk.LEFT, padx=4
-        )
-        ttk.Button(toolbar, text="重置位置", command=self._reset_positions).pack(
-            side=tk.LEFT, padx=(0, 4)
-        )
-        ttk.Separator(toolbar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=4)
-        ttk.Button(toolbar, text="重新载入", command=self._reload).pack(
-            side=tk.LEFT, padx=4
-        )
+        toolbar = tk.Frame(outer, bg=BG_SURFACE)
+        toolbar.pack(fill=tk.X, padx=6, pady=6)
+
+        left = tk.Frame(toolbar, bg=BG_SURFACE)
+        left.pack(side=tk.LEFT)
+
+        right = tk.Frame(toolbar, bg=BG_SURFACE)
+        right.pack(side=tk.RIGHT)
+
+        title = tk.Label(left, text="📊 日志监控器", font=("Microsoft YaHei UI", 12, "bold"),
+                         fg=ACCENT_BLUE, bg=BG_SURFACE)
+        title.pack(side=tk.LEFT, padx=(0, 16))
+
+        sep1 = tk.Frame(left, width=1, height=20, bg=BORDER_COLOR)
+        sep1.pack(side=tk.LEFT, padx=6)
+
+        ttk.Button(left, text="📄 添加日志", command=self._add_file,
+                   style="Toolbar.TButton").pack(side=tk.LEFT, padx=2)
+        ttk.Button(left, text="🗑 删除日志", command=self._delete_file,
+                   style="Toolbar.TButton").pack(side=tk.LEFT, padx=2)
+
+        sep2 = tk.Frame(left, width=1, height=20, bg=BORDER_COLOR)
+        sep2.pack(side=tk.LEFT, padx=6)
+
+        ttk.Button(left, text="📋 添加JSON", command=self._add_json,
+                   style="Toolbar.TButton").pack(side=tk.LEFT, padx=2)
+        ttk.Button(left, text="✏ 编辑JSON", command=self._edit_json,
+                   style="Toolbar.TButton").pack(side=tk.LEFT, padx=2)
+        ttk.Button(left, text="🗑 删除JSON", command=self._delete_json,
+                   style="Toolbar.TButton").pack(side=tk.LEFT, padx=2)
+
+        sep3 = tk.Frame(left, width=1, height=20, bg=BORDER_COLOR)
+        sep3.pack(side=tk.LEFT, padx=6)
+
+        ttk.Button(left, text="📊 添加表格", command=self._add_table,
+                   style="Toolbar.TButton").pack(side=tk.LEFT, padx=2)
+        ttk.Button(left, text="✏ 编辑表格", command=self._edit_table,
+                   style="Toolbar.TButton").pack(side=tk.LEFT, padx=2)
+        ttk.Button(left, text="🗑 删除表格", command=self._delete_table,
+                   style="Toolbar.TButton").pack(side=tk.LEFT, padx=2)
+
+        ttk.Button(right, text="💾 保存位置", command=self._save_positions,
+                   style="Toolbar.TButton").pack(side=tk.LEFT, padx=2)
+        ttk.Button(right, text="🔄 重置位置", command=self._reset_positions,
+                   style="Toolbar.TButton").pack(side=tk.LEFT, padx=2)
+        ttk.Button(right, text="↻ 重新载入", command=self._reload,
+                   style="Toolbar.TButton").pack(side=tk.LEFT, padx=2)
+
+    def _build_status_bar(self):
+        status_frame = tk.Frame(self.root, bg=BG_SURFACE, height=24,
+                                highlightthickness=1,
+                                highlightbackground=BORDER_COLOR)
+        status_frame.pack(fill=tk.X, side=tk.BOTTOM, padx=6, pady=(2, 6))
+        status_frame.pack_propagate(False)
+
+        self._status_label = tk.Label(status_frame, text="● 就绪", font=("Microsoft YaHei UI", 8),
+                                      fg=TEXT_SECONDARY, bg=BG_SURFACE, anchor="w")
+        self._status_label.pack(side=tk.LEFT, fill=tk.X, padx=12, pady=2)
+
+        self.root.after(500, self._update_status)
+
+    def _update_status(self):
+        if self._status_label is None:
+            return
+        total = len(self.panels) + len(self.json_panels) + len(self.table_panels)
+        if total == 0:
+            self._status_label.config(text="● 就绪 — 无监控项", fg=TEXT_SECONDARY)
+        else:
+            parts = []
+            if self.panels:
+                parts.append(f"日志×{len(self.panels)}")
+            if self.json_panels:
+                parts.append(f"JSON×{len(self.json_panels)}")
+            if self.table_panels:
+                parts.append(f"表格×{len(self.table_panels)}")
+            text = "● 监控中 — " + " · ".join(parts)
+            self._status_label.config(text=text, fg=ACCENT_GREEN)
+        self.root.after(800, self._update_status)
 
     def _clear_panels(self):
         for panel in self.panels:
@@ -115,6 +262,10 @@ class LogMonitorApp:
         if self._empty_label is not None:
             self._empty_label.destroy()
             self._empty_label = None
+
+        if self._status_label is not None:
+            self._status_label.master.destroy()
+            self._status_label = None
 
     def _compute_default_layout(self, count):
         positions = []
@@ -160,16 +311,19 @@ class LogMonitorApp:
                 all_items.append(("table", item))
 
         if not all_items:
-            self._empty_label = ttk.Label(
+            self._empty_label = tk.Label(
                 self.root,
-                text="配置文件中没有有效的监控项。",
-                font=("", 12),
+                text="📭 配置文件中没有有效的监控项。\n\n请通过工具栏添加日志、JSON 或表格文件。",
+                font=("Microsoft YaHei UI", 12),
+                fg=TEXT_SECONDARY,
+                bg=BG_DARK,
+                justify="center",
             )
             self._empty_label.pack(padx=20, pady=40)
             return
 
-        self._content_frame = tk.Frame(self.root, bg="#d0d0d0")
-        self._content_frame.pack(fill=tk.BOTH, expand=True)
+        self._content_frame = tk.Frame(self.root, bg=BG_DARK)
+        self._content_frame.pack(fill=tk.BOTH, expand=True, padx=6, pady=2)
 
         needs_layout = []
         for item_type, item in all_items:
@@ -632,27 +786,29 @@ class _AddFileDialog(tk.Toplevel):
         self.title("添加日志文件")
         self.resizable(False, False)
         self.result = None
+        self.configure(bg=BG_DARK)
 
-        frame = ttk.Frame(self, padding=12)
+        frame = tk.Frame(self, bg=BG_DARK, padx=16, pady=16)
         frame.pack(fill=tk.BOTH, expand=True)
 
-        ttk.Label(frame, text=f"文件: {file_path}").grid(
-            row=0, column=0, columnspan=2, sticky="w", pady=(0, 8)
+        tk.Label(frame, text=f"📄 文件: {file_path}", fg=TEXT_PRIMARY, bg=BG_DARK,
+                 font=("Microsoft YaHei UI", 9)).grid(
+            row=0, column=0, columnspan=2, sticky="w", pady=(0, 12)
         )
 
-        ttk.Label(frame, text="显示行数:").grid(row=1, column=0, sticky="w", pady=2)
+        ttk.Label(frame, text="显示行数:").grid(row=1, column=0, sticky="w", pady=3)
         self.lines_var = tk.IntVar(value=50)
-        ttk.Spinbox(frame, from_=1, to=9999, textvariable=self.lines_var, width=12).grid(
-            row=1, column=1, sticky="w", pady=2, padx=(8, 0)
+        ttk.Spinbox(frame, from_=1, to=9999, textvariable=self.lines_var, width=14).grid(
+            row=1, column=1, sticky="w", pady=3, padx=(12, 0)
         )
 
-        ttk.Label(frame, text="刷新间隔(ms):").grid(row=2, column=0, sticky="w", pady=2)
+        ttk.Label(frame, text="刷新间隔(ms):").grid(row=2, column=0, sticky="w", pady=3)
         self.refresh_var = tk.IntVar(value=1000)
         ttk.Spinbox(
-            frame, from_=100, to=60000, increment=100, textvariable=self.refresh_var, width=12
-        ).grid(row=2, column=1, sticky="w", pady=2, padx=(8, 0))
+            frame, from_=100, to=60000, increment=100, textvariable=self.refresh_var, width=14
+        ).grid(row=2, column=1, sticky="w", pady=3, padx=(12, 0))
 
-        ttk.Label(frame, text="排序:").grid(row=3, column=0, sticky="w", pady=2)
+        ttk.Label(frame, text="排序:").grid(row=3, column=0, sticky="w", pady=3)
         self._order_map = {"旧→新": "asc", "新→旧": "desc"}
         self._order_display = {v: k for k, v in self._order_map.items()}
         self.order_var = tk.StringVar(value=self._order_display["asc"])
@@ -661,15 +817,15 @@ class _AddFileDialog(tk.Toplevel):
             textvariable=self.order_var,
             values=list(self._order_map.keys()),
             state="readonly",
-            width=10,
-        ).grid(row=3, column=1, sticky="w", pady=2, padx=(8, 0))
+            width=12,
+        ).grid(row=3, column=1, sticky="w", pady=3, padx=(12, 0))
 
-        btn_frame = ttk.Frame(frame)
-        btn_frame.grid(row=4, column=0, columnspan=2, pady=(12, 0))
-        ttk.Button(btn_frame, text="确定", command=self._on_confirm).pack(
+        btn_frame = tk.Frame(frame, bg=BG_DARK)
+        btn_frame.grid(row=4, column=0, columnspan=2, pady=(16, 0))
+        ttk.Button(btn_frame, text="✓ 确定", command=self._on_confirm).pack(
             side=tk.LEFT, padx=(0, 8)
         )
-        ttk.Button(btn_frame, text="取消", command=self.destroy).pack(side=tk.LEFT)
+        ttk.Button(btn_frame, text="✕ 取消", command=self.destroy).pack(side=tk.LEFT)
 
         self.transient(parent)
         self.grab_set()
@@ -690,16 +846,24 @@ class _DeleteFileDialog(tk.Toplevel):
         self.title("删除日志文件")
         self.resizable(False, False)
         self.result_index = None
+        self.configure(bg=BG_DARK)
 
-        frame = ttk.Frame(self, padding=12)
+        frame = tk.Frame(self, bg=BG_DARK, padx=16, pady=16)
         frame.pack(fill=tk.BOTH, expand=True)
 
-        ttk.Label(frame, text="选择要删除的日志文件:").pack(anchor="w", pady=(0, 6))
+        tk.Label(frame, text="选择要删除的日志文件:", fg=TEXT_PRIMARY, bg=BG_DARK,
+                 font=("Microsoft YaHei UI", 9)).pack(anchor="w", pady=(0, 8))
 
-        list_frame = ttk.Frame(frame)
+        list_frame = tk.Frame(frame, bg=BG_DARK)
         list_frame.pack(fill=tk.BOTH, expand=True)
 
-        self.listbox = tk.Listbox(list_frame, width=60, height=10)
+        self.listbox = tk.Listbox(list_frame, width=60, height=10,
+                                  bg=BG_SURFACE, fg=TEXT_PRIMARY,
+                                  selectbackground=ACCENT_BLUE,
+                                  selectforeground="#ffffff",
+                                  borderwidth=1, relief="solid",
+                                  highlightthickness=0,
+                                  font=("Consolas", 9))
         scrollbar = ttk.Scrollbar(list_frame, orient=tk.VERTICAL, command=self.listbox.yview)
         self.listbox.configure(yscrollcommand=scrollbar.set)
         self.listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
@@ -709,12 +873,11 @@ class _DeleteFileDialog(tk.Toplevel):
             path = item.get("path", "")
             self.listbox.insert(tk.END, path)
 
-        btn_frame = ttk.Frame(frame)
+        btn_frame = tk.Frame(frame, bg=BG_DARK)
         btn_frame.pack(pady=(12, 0))
-        ttk.Button(btn_frame, text="删除", command=self._on_delete).pack(
-            side=tk.LEFT, padx=(0, 8)
-        )
-        ttk.Button(btn_frame, text="取消", command=self.destroy).pack(side=tk.LEFT)
+        ttk.Button(btn_frame, text="🗑 删除", command=self._on_delete,
+                   style="Danger.TButton").pack(side=tk.LEFT, padx=(0, 8))
+        ttk.Button(btn_frame, text="✕ 取消", command=self.destroy).pack(side=tk.LEFT)
 
         self.transient(parent)
         self.grab_set()
@@ -735,16 +898,24 @@ class _DeleteJsonDialog(tk.Toplevel):
         self.title("删除JSON监控")
         self.resizable(False, False)
         self.result_index = None
+        self.configure(bg=BG_DARK)
 
-        frame = ttk.Frame(self, padding=12)
+        frame = tk.Frame(self, bg=BG_DARK, padx=16, pady=16)
         frame.pack(fill=tk.BOTH, expand=True)
 
-        ttk.Label(frame, text="选择要删除的JSON监控:").pack(anchor="w", pady=(0, 6))
+        tk.Label(frame, text="选择要删除的JSON监控:", fg=TEXT_PRIMARY, bg=BG_DARK,
+                 font=("Microsoft YaHei UI", 9)).pack(anchor="w", pady=(0, 8))
 
-        list_frame = ttk.Frame(frame)
+        list_frame = tk.Frame(frame, bg=BG_DARK)
         list_frame.pack(fill=tk.BOTH, expand=True)
 
-        self.listbox = tk.Listbox(list_frame, width=60, height=10)
+        self.listbox = tk.Listbox(list_frame, width=60, height=10,
+                                  bg=BG_SURFACE, fg=TEXT_PRIMARY,
+                                  selectbackground=ACCENT_BLUE,
+                                  selectforeground="#ffffff",
+                                  borderwidth=1, relief="solid",
+                                  highlightthickness=0,
+                                  font=("Consolas", 9))
         scrollbar = ttk.Scrollbar(
             list_frame, orient=tk.VERTICAL, command=self.listbox.yview
         )
@@ -756,12 +927,11 @@ class _DeleteJsonDialog(tk.Toplevel):
             path = item.get("path", "")
             self.listbox.insert(tk.END, path)
 
-        btn_frame = ttk.Frame(frame)
+        btn_frame = tk.Frame(frame, bg=BG_DARK)
         btn_frame.pack(pady=(12, 0))
-        ttk.Button(btn_frame, text="删除", command=self._on_delete).pack(
-            side=tk.LEFT, padx=(0, 8)
-        )
-        ttk.Button(btn_frame, text="取消", command=self.destroy).pack(side=tk.LEFT)
+        ttk.Button(btn_frame, text="🗑 删除", command=self._on_delete,
+                   style="Danger.TButton").pack(side=tk.LEFT, padx=(0, 8))
+        ttk.Button(btn_frame, text="✕ 取消", command=self.destroy).pack(side=tk.LEFT)
 
         self.transient(parent)
         self.grab_set()
@@ -782,16 +952,24 @@ class _EditJsonDialog(tk.Toplevel):
         self.title("编辑JSON监控")
         self.resizable(False, False)
         self.result_index = None
+        self.configure(bg=BG_DARK)
 
-        frame = ttk.Frame(self, padding=12)
+        frame = tk.Frame(self, bg=BG_DARK, padx=16, pady=16)
         frame.pack(fill=tk.BOTH, expand=True)
 
-        ttk.Label(frame, text="选择要编辑的JSON监控:").pack(anchor="w", pady=(0, 6))
+        tk.Label(frame, text="选择要编辑的JSON监控:", fg=TEXT_PRIMARY, bg=BG_DARK,
+                 font=("Microsoft YaHei UI", 9)).pack(anchor="w", pady=(0, 8))
 
-        list_frame = ttk.Frame(frame)
+        list_frame = tk.Frame(frame, bg=BG_DARK)
         list_frame.pack(fill=tk.BOTH, expand=True)
 
-        self.listbox = tk.Listbox(list_frame, width=60, height=10)
+        self.listbox = tk.Listbox(list_frame, width=60, height=10,
+                                  bg=BG_SURFACE, fg=TEXT_PRIMARY,
+                                  selectbackground=ACCENT_BLUE,
+                                  selectforeground="#ffffff",
+                                  borderwidth=1, relief="solid",
+                                  highlightthickness=0,
+                                  font=("Consolas", 9))
         scrollbar = ttk.Scrollbar(
             list_frame, orient=tk.VERTICAL, command=self.listbox.yview
         )
@@ -806,12 +984,12 @@ class _EditJsonDialog(tk.Toplevel):
             display = f"{path}  (字段: {len(fields)}, 别名: {alias_count})"
             self.listbox.insert(tk.END, display)
 
-        btn_frame = ttk.Frame(frame)
+        btn_frame = tk.Frame(frame, bg=BG_DARK)
         btn_frame.pack(pady=(12, 0))
-        ttk.Button(btn_frame, text="编辑", command=self._on_edit).pack(
+        ttk.Button(btn_frame, text="✏ 编辑", command=self._on_edit).pack(
             side=tk.LEFT, padx=(0, 8)
         )
-        ttk.Button(btn_frame, text="取消", command=self.destroy).pack(side=tk.LEFT)
+        ttk.Button(btn_frame, text="✕ 取消", command=self.destroy).pack(side=tk.LEFT)
 
         self.transient(parent)
         self.grab_set()
@@ -832,16 +1010,24 @@ class _DeleteTableDialog(tk.Toplevel):
         self.title("选择CSV监控")
         self.resizable(False, False)
         self.result_index = None
+        self.configure(bg=BG_DARK)
 
-        frame = ttk.Frame(self, padding=12)
+        frame = tk.Frame(self, bg=BG_DARK, padx=16, pady=16)
         frame.pack(fill=tk.BOTH, expand=True)
 
-        ttk.Label(frame, text="选择CSV监控:").pack(anchor="w", pady=(0, 6))
+        tk.Label(frame, text="选择CSV监控:", fg=TEXT_PRIMARY, bg=BG_DARK,
+                 font=("Microsoft YaHei UI", 9)).pack(anchor="w", pady=(0, 8))
 
-        list_frame = ttk.Frame(frame)
+        list_frame = tk.Frame(frame, bg=BG_DARK)
         list_frame.pack(fill=tk.BOTH, expand=True)
 
-        self.listbox = tk.Listbox(list_frame, width=60, height=10)
+        self.listbox = tk.Listbox(list_frame, width=60, height=10,
+                                  bg=BG_SURFACE, fg=TEXT_PRIMARY,
+                                  selectbackground=ACCENT_BLUE,
+                                  selectforeground="#ffffff",
+                                  borderwidth=1, relief="solid",
+                                  highlightthickness=0,
+                                  font=("Consolas", 9))
         scrollbar = ttk.Scrollbar(
             list_frame, orient=tk.VERTICAL, command=self.listbox.yview
         )
@@ -855,12 +1041,12 @@ class _DeleteTableDialog(tk.Toplevel):
             display = f"{path}  (最大行数: {max_rows})"
             self.listbox.insert(tk.END, display)
 
-        btn_frame = ttk.Frame(frame)
+        btn_frame = tk.Frame(frame, bg=BG_DARK)
         btn_frame.pack(pady=(12, 0))
-        ttk.Button(btn_frame, text="确定", command=self._on_select).pack(
+        ttk.Button(btn_frame, text="✓ 确定", command=self._on_select).pack(
             side=tk.LEFT, padx=(0, 8)
         )
-        ttk.Button(btn_frame, text="取消", command=self.destroy).pack(side=tk.LEFT)
+        ttk.Button(btn_frame, text="✕ 取消", command=self.destroy).pack(side=tk.LEFT)
 
         self.transient(parent)
         self.grab_set()

@@ -2,6 +2,18 @@ import os
 import tkinter as tk
 from tkinter import ttk
 
+# ── 配色引用 ──────────────────────────────────────────────────────
+BG_DARK = "#0d1117"
+BG_SURFACE = "#161b22"
+BG_ELEVATED = "#1c2128"
+BG_HEADER_LOG = "#1a3a4a"
+ACCENT_BLUE = "#58a6ff"
+ACCENT_GREEN = "#3fb950"
+ACCENT_RED = "#f85149"
+TEXT_PRIMARY = "#c9d1d9"
+TEXT_SECONDARY = "#8b949e"
+BORDER_COLOR = "#30363d"
+
 
 class LogPanel(ttk.Frame):
     def __init__(self, parent, config_item, on_config_change=None, _popup=False):
@@ -25,31 +37,69 @@ class LogPanel(ttk.Frame):
         self._active = False
 
     def _build_ui(self):
-        self._info_frame = ttk.Frame(self, cursor="fleur")
-        self._info_frame.pack(fill=tk.X, padx=4, pady=(4, 0))
+        self.configure(style="Card.TFrame")
+
+        outer = tk.Frame(self, bg=BG_ELEVATED, highlightthickness=1,
+                         highlightbackground=BORDER_COLOR)
+        outer.pack(fill=tk.BOTH, expand=True)
+
+        header = tk.Frame(outer, bg=BG_HEADER_LOG, cursor="fleur", height=32)
+        header.pack(fill=tk.X)
+        header.pack_propagate(False)
+
+        accent_bar = tk.Frame(header, bg=ACCENT_BLUE, width=4)
+        accent_bar.pack(side=tk.LEFT, fill=tk.Y)
+
+        status_dot = tk.Label(header, text="●", fg=ACCENT_GREEN, bg=BG_HEADER_LOG,
+                              font=("", 9))
+        status_dot.pack(side=tk.LEFT, padx=(8, 4))
+
+        icon_label = tk.Label(header, text="📄", bg=BG_HEADER_LOG, font=("", 10))
+        icon_label.pack(side=tk.LEFT)
+
+        fname = self._get_display_name()
+        self._header_title = tk.Label(header, text=f" {fname}",
+                                      fg=TEXT_PRIMARY, bg=BG_HEADER_LOG,
+                                      font=("Microsoft YaHei UI", 9, "bold"),
+                                      cursor="hand2")
+        self._header_title.pack(side=tk.LEFT, padx=(2, 8))
+        self._header_title.bind("<Double-Button-1>", self._start_title_edit)
+        self._header_title.bind("<Enter>", lambda e: self._header_title.config(fg=ACCENT_BLUE))
+        self._header_title.bind("<Leave>", lambda e: self._header_title.config(fg=TEXT_PRIMARY))
+        self._title_edit_entry = None
 
         order_text = "新→旧" if self.order == "desc" else "旧→新"
-        ttk.Label(self._info_frame, text=f"文件: {self.log_path}").pack(side=tk.LEFT)
-        ttk.Label(
-            self._info_frame,
-            text=f"行数: {self.display_lines}  |  刷新: {self.refresh_ms}ms  |  排序: {order_text}",
-        ).pack(side=tk.LEFT, padx=(8, 8))
-        if not self._popup:
-            ttk.Button(self._info_frame, text="弹出", command=self._detach, width=4).pack(
-                side=tk.RIGHT
-            )
+        info_text = f"行数:{self.display_lines} | 刷新:{self.refresh_ms}ms | {order_text}"
+        info_label = tk.Label(header, text=info_text, fg=TEXT_SECONDARY,
+                              bg=BG_HEADER_LOG, font=("Microsoft YaHei UI", 8))
+        info_label.pack(side=tk.LEFT)
 
-        text_frame = ttk.Frame(self)
-        text_frame.pack(fill=tk.BOTH, expand=True, padx=4, pady=4)
+        if not self._popup:
+            detach_btn = tk.Label(header, text="⬈", fg=TEXT_SECONDARY,
+                                  bg=BG_HEADER_LOG, cursor="hand2",
+                                  font=("", 11))
+            detach_btn.pack(side=tk.RIGHT, padx=(0, 8))
+            detach_btn.bind("<Button-1>", lambda e: self._detach())
+            detach_btn.bind("<Enter>", lambda e: detach_btn.config(fg=ACCENT_BLUE))
+            detach_btn.bind("<Leave>", lambda e: detach_btn.config(fg=TEXT_SECONDARY))
+
+        text_frame = tk.Frame(outer, bg=BG_ELEVATED)
+        text_frame.pack(fill=tk.BOTH, expand=True, padx=1, pady=(0, 1))
 
         self.text_widget = tk.Text(
             text_frame,
             wrap=tk.NONE,
             state=tk.DISABLED,
             font=("Consolas", 10),
-            bg="#1e1e1e",
-            fg="#d4d4d4",
-            insertbackground="#d4d4d4",
+            bg=BG_DARK,
+            fg=TEXT_PRIMARY,
+            insertbackground=TEXT_PRIMARY,
+            borderwidth=0,
+            highlightthickness=0,
+            selectbackground=ACCENT_BLUE,
+            selectforeground="#ffffff",
+            padx=8,
+            pady=6,
         )
         v_scrollbar = ttk.Scrollbar(
             text_frame, orient=tk.VERTICAL, command=self.text_widget.yview
@@ -67,8 +117,73 @@ class LogPanel(ttk.Frame):
         text_frame.rowconfigure(0, weight=1)
         text_frame.columnconfigure(0, weight=1)
 
-        self._resize_grip = ttk.Label(self, text="◢", cursor="size_nw_se", font=("", 8))
+        self._resize_grip = tk.Label(outer, text="◢", cursor="size_nw_se",
+                                     font=("", 8), fg=TEXT_SECONDARY,
+                                     bg=BG_ELEVATED)
         self._resize_grip.place(relx=1.0, rely=1.0, anchor="se")
+
+        self._info_frame = header
+
+    def _get_display_name(self):
+        return self._config_item.get("display_name") or os.path.basename(self.log_path)
+
+    def _start_title_edit(self, event=None):
+        if self._title_edit_entry is not None:
+            return
+        current = self._header_title.cget("text").strip()
+        self._title_edit_entry = tk.Entry(
+            self._info_frame,
+            font=("Microsoft YaHei UI", 9, "bold"),
+            fg=TEXT_PRIMARY,
+            bg=BG_HEADER_LOG,
+            insertbackground=TEXT_PRIMARY,
+            borderwidth=0,
+            highlightthickness=0,
+            relief="flat",
+            width=len(current) + 2,
+        )
+        self._title_edit_entry.insert(0, current)
+        x, y = self._header_title.winfo_x(), self._header_title.winfo_y()
+        self._header_title.pack_forget()
+        self._title_edit_entry.place(x=x, y=y + 2, height=22)
+        self._title_edit_entry.focus_set()
+        self._title_edit_entry.select_range(0, tk.END)
+        self._title_edit_entry.bind("<Return>", self._finish_title_edit)
+        self._title_edit_entry.bind("<FocusOut>", self._finish_title_edit)
+        self._title_edit_entry.bind("<Escape>", self._cancel_title_edit)
+
+    def _finish_title_edit(self, event=None):
+        if self._title_edit_entry is None:
+            return
+        new_name = self._title_edit_entry.get().strip()
+        self._title_edit_entry.destroy()
+        self._title_edit_entry = None
+
+        if not new_name:
+            new_name = os.path.basename(self.log_path)
+            self._config_item.pop("display_name", None)
+        else:
+            current_display = self._config_item.get("display_name")
+            if new_name == os.path.basename(self.log_path):
+                self._config_item.pop("display_name", None)
+            elif new_name != current_display:
+                self._config_item["display_name"] = new_name
+
+        self._header_title.config(text=f" {new_name}")
+        self._header_title.pack(side=tk.LEFT, padx=(2, 8), before=self._info_frame.winfo_children()[4])
+        if self._on_config_change:
+            self._on_config_change()
+        if self._toplevel is not None:
+            self._toplevel.title(new_name)
+
+    def _cancel_title_edit(self, event=None):
+        if self._title_edit_entry is None:
+            return
+        self._title_edit_entry.destroy()
+        self._title_edit_entry = None
+        current = self._get_display_name()
+        self._header_title.config(text=f" {current}")
+        self._header_title.pack(side=tk.LEFT, padx=(2, 8), before=self._info_frame.winfo_children()[4])
 
     def enable_drag_resize(self, content_parent):
         self._content_parent = content_parent
@@ -84,7 +199,7 @@ class LogPanel(ttk.Frame):
         self._resize_grip.bind("<ButtonRelease-1>", self._stop_resize)
 
         for child in self._info_frame.winfo_children():
-            if isinstance(child, ttk.Button):
+            if isinstance(child, tk.Label) and child.cget("text") in ("⬈",):
                 continue
             child.bind("<ButtonPress-1>", self._start_drag)
             child.bind("<B1-Motion>", self._on_drag)
@@ -176,7 +291,7 @@ class LogPanel(ttk.Frame):
         self.place_forget()
 
         self._toplevel = tk.Toplevel(self.winfo_toplevel())
-        self._toplevel.title(os.path.basename(self.log_path))
+        self._toplevel.title(self._get_display_name())
         self._toplevel.protocol("WM_DELETE_WINDOW", self._reattach)
 
         self._detached_panel = LogPanel(

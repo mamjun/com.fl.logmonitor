@@ -3,6 +3,19 @@ import os
 import tkinter as tk
 from tkinter import messagebox, ttk
 
+# ── 配色引用 ──────────────────────────────────────────────────────
+BG_DARK = "#0d1117"
+BG_SURFACE = "#161b22"
+BG_ELEVATED = "#1c2128"
+BG_HEADER_TABLE = "#3a2a1a"
+ACCENT_BLUE = "#58a6ff"
+ACCENT_GREEN = "#3fb950"
+ACCENT_ORANGE = "#f0883e"
+ACCENT_RED = "#f85149"
+TEXT_PRIMARY = "#c9d1d9"
+TEXT_SECONDARY = "#8b949e"
+BORDER_COLOR = "#30363d"
+
 
 class TablePanel(ttk.Frame):
     def __init__(self, parent, config_item, on_config_change=None, _popup=False):
@@ -27,21 +40,53 @@ class TablePanel(ttk.Frame):
         self._active = False
 
     def _build_ui(self):
-        self._info_frame = ttk.Frame(self, cursor="fleur")
-        self._info_frame.pack(fill=tk.X, padx=4, pady=(4, 0))
+        self.configure(style="Card.TFrame")
 
-        ttk.Label(self._info_frame, text=f"CSV: {self.csv_path}").pack(side=tk.LEFT)
-        ttk.Label(
-            self._info_frame,
-            text=f"列: {len(self.columns)}  |  行数: {self.max_rows}  |  刷新: {self.refresh_ms}ms",
-        ).pack(side=tk.LEFT, padx=(8, 8))
+        outer = tk.Frame(self, bg=BG_ELEVATED, highlightthickness=1,
+                         highlightbackground=BORDER_COLOR)
+        outer.pack(fill=tk.BOTH, expand=True)
+
+        header = tk.Frame(outer, bg=BG_HEADER_TABLE, cursor="fleur", height=32)
+        header.pack(fill=tk.X)
+        header.pack_propagate(False)
+
+        accent_bar = tk.Frame(header, bg=ACCENT_ORANGE, width=4)
+        accent_bar.pack(side=tk.LEFT, fill=tk.Y)
+
+        status_dot = tk.Label(header, text="●", fg=ACCENT_GREEN, bg=BG_HEADER_TABLE,
+                              font=("", 9))
+        status_dot.pack(side=tk.LEFT, padx=(8, 4))
+
+        icon_label = tk.Label(header, text="📊", bg=BG_HEADER_TABLE, font=("", 10))
+        icon_label.pack(side=tk.LEFT)
+
+        fname = self._get_display_name()
+        self._header_title = tk.Label(header, text=f" {fname}",
+                                      fg=TEXT_PRIMARY, bg=BG_HEADER_TABLE,
+                                      font=("Microsoft YaHei UI", 9, "bold"),
+                                      cursor="hand2")
+        self._header_title.pack(side=tk.LEFT, padx=(2, 8))
+        self._header_title.bind("<Double-Button-1>", self._start_title_edit)
+        self._header_title.bind("<Enter>", lambda e: self._header_title.config(fg=ACCENT_ORANGE))
+        self._header_title.bind("<Leave>", lambda e: self._header_title.config(fg=TEXT_PRIMARY))
+        self._title_edit_entry = None
+
+        info_text = f"列:{len(self.columns)} | 行:{self.max_rows} | 刷新:{self.refresh_ms}ms"
+        info_label = tk.Label(header, text=info_text, fg=TEXT_SECONDARY,
+                              bg=BG_HEADER_TABLE, font=("Microsoft YaHei UI", 8))
+        info_label.pack(side=tk.LEFT)
+
         if not self._popup:
-            ttk.Button(self._info_frame, text="弹出", command=self._detach, width=4).pack(
-                side=tk.RIGHT
-            )
+            detach_btn = tk.Label(header, text="⬈", fg=TEXT_SECONDARY,
+                                  bg=BG_HEADER_TABLE, cursor="hand2",
+                                  font=("", 11))
+            detach_btn.pack(side=tk.RIGHT, padx=(0, 8))
+            detach_btn.bind("<Button-1>", lambda e: self._detach())
+            detach_btn.bind("<Enter>", lambda e: detach_btn.config(fg=ACCENT_ORANGE))
+            detach_btn.bind("<Leave>", lambda e: detach_btn.config(fg=TEXT_SECONDARY))
 
-        tree_frame = ttk.Frame(self)
-        tree_frame.pack(fill=tk.BOTH, expand=True, padx=4, pady=4)
+        tree_frame = tk.Frame(outer, bg=BG_ELEVATED)
+        tree_frame.pack(fill=tk.BOTH, expand=True, padx=1, pady=(0, 1))
 
         self._tree = ttk.Treeview(tree_frame, show="headings", selectmode="browse")
         v_scrollbar = ttk.Scrollbar(
@@ -60,11 +105,76 @@ class TablePanel(ttk.Frame):
         tree_frame.rowconfigure(0, weight=1)
         tree_frame.columnconfigure(0, weight=1)
 
-        self._resize_grip = ttk.Label(self, text="◢", cursor="size_nw_se", font=("", 8))
+        self._resize_grip = tk.Label(outer, text="◢", cursor="size_nw_se",
+                                     font=("", 8), fg=TEXT_SECONDARY,
+                                     bg=BG_ELEVATED)
         self._resize_grip.place(relx=1.0, rely=1.0, anchor="se")
 
         self._display_columns = []
         self._error_label = None
+
+        self._info_frame = header
+
+    def _get_display_name(self):
+        return self._config_item.get("display_name") or os.path.basename(self.csv_path)
+
+    def _start_title_edit(self, event=None):
+        if self._title_edit_entry is not None:
+            return
+        current = self._header_title.cget("text").strip()
+        self._title_edit_entry = tk.Entry(
+            self._info_frame,
+            font=("Microsoft YaHei UI", 9, "bold"),
+            fg=TEXT_PRIMARY,
+            bg=BG_HEADER_TABLE,
+            insertbackground=TEXT_PRIMARY,
+            borderwidth=0,
+            highlightthickness=0,
+            relief="flat",
+            width=len(current) + 2,
+        )
+        self._title_edit_entry.insert(0, current)
+        x, y = self._header_title.winfo_x(), self._header_title.winfo_y()
+        self._header_title.pack_forget()
+        self._title_edit_entry.place(x=x, y=y + 2, height=22)
+        self._title_edit_entry.focus_set()
+        self._title_edit_entry.select_range(0, tk.END)
+        self._title_edit_entry.bind("<Return>", self._finish_title_edit)
+        self._title_edit_entry.bind("<FocusOut>", self._finish_title_edit)
+        self._title_edit_entry.bind("<Escape>", self._cancel_title_edit)
+
+    def _finish_title_edit(self, event=None):
+        if self._title_edit_entry is None:
+            return
+        new_name = self._title_edit_entry.get().strip()
+        self._title_edit_entry.destroy()
+        self._title_edit_entry = None
+
+        if not new_name:
+            new_name = os.path.basename(self.csv_path)
+            self._config_item.pop("display_name", None)
+        else:
+            current_display = self._config_item.get("display_name")
+            if new_name == os.path.basename(self.csv_path):
+                self._config_item.pop("display_name", None)
+            elif new_name != current_display:
+                self._config_item["display_name"] = new_name
+
+        self._header_title.config(text=f" {new_name}")
+        self._header_title.pack(side=tk.LEFT, padx=(2, 8), before=self._info_frame.winfo_children()[4])
+        if self._on_config_change:
+            self._on_config_change()
+        if self._toplevel is not None:
+            self._toplevel.title(new_name)
+
+    def _cancel_title_edit(self, event=None):
+        if self._title_edit_entry is None:
+            return
+        self._title_edit_entry.destroy()
+        self._title_edit_entry = None
+        current = self._get_display_name()
+        self._header_title.config(text=f" {current}")
+        self._header_title.pack(side=tk.LEFT, padx=(2, 8), before=self._info_frame.winfo_children()[4])
 
     def enable_drag_resize(self, content_parent):
         self._content_parent = content_parent
@@ -80,7 +190,7 @@ class TablePanel(ttk.Frame):
         self._resize_grip.bind("<ButtonRelease-1>", self._stop_resize)
 
         for child in self._info_frame.winfo_children():
-            if isinstance(child, ttk.Button):
+            if isinstance(child, tk.Label) and child.cget("text") in ("⬈",):
                 continue
             child.bind("<ButtonPress-1>", self._start_drag)
             child.bind("<B1-Motion>", self._on_drag)
@@ -198,7 +308,8 @@ class TablePanel(ttk.Frame):
     def _show_error(self, error):
         self._clear_error()
         self._tree.delete(*self._tree.get_children())
-        self._error_label = ttk.Label(self._tree, text=error, foreground="red")
+        self._error_label = tk.Label(self._tree, text=error, fg=ACCENT_RED,
+                                     bg=BG_SURFACE, font=("Microsoft YaHei UI", 9))
         self._error_label.place(relx=0.5, rely=0.5, anchor="center")
 
     def _clear_error(self):
@@ -218,7 +329,7 @@ class TablePanel(ttk.Frame):
         self.place_forget()
 
         self._toplevel = tk.Toplevel(self.winfo_toplevel())
-        self._toplevel.title(os.path.basename(self.csv_path))
+        self._toplevel.title(self._get_display_name())
         self._toplevel.protocol("WM_DELETE_WINDOW", self._reattach)
 
         self._detached_panel = TablePanel(
@@ -270,21 +381,28 @@ class _CsvColumnPickerDialog(tk.Toplevel):
         self.result = None
         self._columns = available_columns
         self._aliases = dict(existing_aliases) if existing_aliases else {}
+        self.configure(bg=BG_DARK)
 
-        frame = ttk.Frame(self, padding=12)
+        frame = tk.Frame(self, bg=BG_DARK, padx=16, pady=16)
         frame.pack(fill=tk.BOTH, expand=True)
 
-        ttk.Label(frame, text=f"CSV: {csv_path}").pack(anchor="w", pady=(0, 4))
-        ttk.Label(
+        tk.Label(frame, text=f"📊 CSV: {csv_path}", fg=TEXT_PRIMARY, bg=BG_DARK,
+                 font=("Microsoft YaHei UI", 9, "bold")).pack(anchor="w", pady=(0, 4))
+        tk.Label(
             frame,
             text="选择要显示的列，双击列名可设置别名:",
-        ).pack(anchor="w", pady=(0, 6))
+            fg=TEXT_SECONDARY, bg=BG_DARK, font=("Microsoft YaHei UI", 8),
+        ).pack(anchor="w", pady=(0, 8))
 
-        list_frame = ttk.Frame(frame)
+        list_frame = tk.Frame(frame, bg=BG_DARK)
         list_frame.pack(fill=tk.BOTH, expand=True)
 
         self.listbox = tk.Listbox(
-            list_frame, width=60, height=14, selectmode=tk.MULTIPLE
+            list_frame, width=60, height=14, selectmode=tk.MULTIPLE,
+            bg=BG_SURFACE, fg=TEXT_PRIMARY,
+            selectbackground=ACCENT_ORANGE, selectforeground="#ffffff",
+            borderwidth=1, relief="solid", highlightthickness=0,
+            font=("Consolas", 9),
         )
         scrollbar = ttk.Scrollbar(
             list_frame, orient=tk.VERTICAL, command=self.listbox.yview
@@ -306,17 +424,19 @@ class _CsvColumnPickerDialog(tk.Toplevel):
         self.listbox.bind("<<ListboxSelect>>", self._on_selection_change)
         self.listbox.bind("<Double-Button-1>", self._on_double_click)
 
-        ttk.Label(frame, text="最大显示行数:").pack(anchor="w", pady=(8, 2))
+        tk.Label(frame, text="最大显示行数:", fg=TEXT_PRIMARY, bg=BG_DARK,
+                 font=("Microsoft YaHei UI", 9)).pack(anchor="w", pady=(10, 2))
         self.max_rows_var = tk.IntVar(value=existing_max_rows if existing_max_rows else 100)
         ttk.Spinbox(
             frame,
             from_=1,
             to=99999,
             textvariable=self.max_rows_var,
-            width=12,
+            width=14,
         ).pack(anchor="w")
 
-        ttk.Label(frame, text="刷新间隔(ms):").pack(anchor="w", pady=(8, 2))
+        tk.Label(frame, text="刷新间隔(ms):", fg=TEXT_PRIMARY, bg=BG_DARK,
+                 font=("Microsoft YaHei UI", 9)).pack(anchor="w", pady=(8, 2))
         self.refresh_var = tk.IntVar(value=existing_refresh_ms if existing_refresh_ms else 1000)
         ttk.Spinbox(
             frame,
@@ -324,18 +444,19 @@ class _CsvColumnPickerDialog(tk.Toplevel):
             to=60000,
             increment=100,
             textvariable=self.refresh_var,
-            width=10,
+            width=12,
         ).pack(anchor="w")
 
-        self._count_label = ttk.Label(frame, text="已选: 0")
+        self._count_label = tk.Label(frame, text="已选: 0", fg=TEXT_SECONDARY,
+                                     bg=BG_DARK, font=("Microsoft YaHei UI", 8))
         self._count_label.pack(anchor="w", pady=(4, 0))
 
-        btn_frame = ttk.Frame(frame)
+        btn_frame = tk.Frame(frame, bg=BG_DARK)
         btn_frame.pack(pady=(12, 0))
-        ttk.Button(btn_frame, text="确定", command=self._on_confirm).pack(
+        ttk.Button(btn_frame, text="✓ 确定", command=self._on_confirm).pack(
             side=tk.LEFT, padx=(0, 8)
         )
-        ttk.Button(btn_frame, text="取消", command=self.destroy).pack(side=tk.LEFT)
+        ttk.Button(btn_frame, text="✕ 取消", command=self.destroy).pack(side=tk.LEFT)
 
         self._on_selection_change()
 
@@ -392,26 +513,30 @@ class _AliasDialog(tk.Toplevel):
         self.title("设置别名")
         self.resizable(False, False)
         self.result = None
+        self.configure(bg=BG_DARK)
 
-        frame = ttk.Frame(self, padding=12)
+        frame = tk.Frame(self, bg=BG_DARK, padx=16, pady=16)
         frame.pack(fill=tk.BOTH, expand=True)
 
-        ttk.Label(frame, text=f"列名: {field_name}").pack(anchor="w", pady=(0, 6))
-        ttk.Label(frame, text="别名:").pack(anchor="w")
-        self._entry = ttk.Entry(frame, width=30)
-        self._entry.pack(fill=tk.X, pady=(2, 8))
+        tk.Label(frame, text=f"列名: {field_name}", fg=TEXT_PRIMARY, bg=BG_DARK,
+                 font=("Microsoft YaHei UI", 9, "bold")).pack(anchor="w", pady=(0, 8))
+        tk.Label(frame, text="别名:", fg=TEXT_PRIMARY, bg=BG_DARK,
+                 font=("Microsoft YaHei UI", 9)).pack(anchor="w")
+        self._entry = ttk.Entry(frame, width=32)
+        self._entry.pack(fill=tk.X, pady=(4, 8))
         self._entry.insert(0, current_alias)
         self._entry.focus_set()
         self._entry.select_range(0, tk.END)
 
-        ttk.Label(frame, text="留空则使用列原名", foreground="gray").pack(anchor="w")
+        tk.Label(frame, text="留空则使用列原名", fg=TEXT_SECONDARY, bg=BG_DARK,
+                 font=("Microsoft YaHei UI", 8)).pack(anchor="w")
 
-        btn_frame = ttk.Frame(frame)
+        btn_frame = tk.Frame(frame, bg=BG_DARK)
         btn_frame.pack(pady=(12, 0))
-        ttk.Button(btn_frame, text="确定", command=self._on_confirm).pack(
+        ttk.Button(btn_frame, text="✓ 确定", command=self._on_confirm).pack(
             side=tk.LEFT, padx=(0, 8)
         )
-        ttk.Button(btn_frame, text="取消", command=self.destroy).pack(side=tk.LEFT)
+        ttk.Button(btn_frame, text="✕ 取消", command=self.destroy).pack(side=tk.LEFT)
 
         self.bind("<Return>", lambda e: self._on_confirm())
         self.bind("<Escape>", lambda e: self.destroy())
