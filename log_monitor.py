@@ -77,14 +77,14 @@ class LogPanel(ttk.Frame):
             return f"[错误] 读取文件失败: {e}"
 
 
+MAX_COLUMNS = 3
+
+
 class LogMonitorApp:
     def __init__(self, config_path="config.json"):
         self.root = tk.Tk()
         self.root.title("日志监控器")
-        self.root.geometry("1000x600")
-
-        self.notebook = ttk.Notebook(self.root)
-        self.notebook.pack(fill=tk.BOTH, expand=True)
+        self.root.geometry("1200x700")
 
         self.panels = []
         self._load_config(config_path)
@@ -110,22 +110,35 @@ class LogMonitorApp:
             print(f"配置文件解析失败: {e}")
             return
 
+        columns = {1: [], 2: [], 3: []}
         for item in config.get("logs", []):
             path = item.get("path", "")
             lines = item.get("lines", 50)
             refresh_ms = item.get("refresh_ms", 1000)
+            column = item.get("column", 1)
 
             if not path:
                 print(f"跳过缺少 path 的配置项: {item}")
                 continue
 
-            panel = LogPanel(
-                self.notebook,
-                {"path": path, "lines": lines, "refresh_ms": refresh_ms},
+            column = max(1, min(MAX_COLUMNS, int(column)))
+            columns[column].append(
+                {"path": path, "lines": lines, "refresh_ms": refresh_ms}
             )
-            tab_name = os.path.basename(path) or path
-            self.notebook.add(panel, text=tab_name)
-            self.panels.append(panel)
+
+        active_columns = [c for c in range(1, MAX_COLUMNS + 1) if columns[c]]
+        for i, col_idx in enumerate(active_columns):
+            self.root.columnconfigure(i, weight=1, uniform="col")
+            notebook = ttk.Notebook(self.root)
+            notebook.grid(row=0, column=i, sticky="nsew", padx=2, pady=2)
+
+            for item in columns[col_idx]:
+                panel = LogPanel(notebook, item)
+                tab_name = os.path.basename(item["path"]) or item["path"]
+                notebook.add(panel, text=tab_name)
+                self.panels.append(panel)
+
+        self.root.rowconfigure(0, weight=1)
 
     def _on_close(self):
         self.root.destroy()
