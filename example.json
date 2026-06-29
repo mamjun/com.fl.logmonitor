@@ -1,0 +1,106 @@
+{
+    "code": 200,
+    "msg": "success",
+    "data": {
+        "host": {
+            "os": "linux",
+            "hostname": "dst-2",
+            "platform": "ubuntu",
+            "kernelArch": "x86_64"
+        },
+        "cpu": {
+            "cores": 12,
+            "cpuPercent": [
+                15.694164989981365,
+                4.897959183674834,
+                8.048289738430528,
+                3.643724696355847,
+                7.615230460933688,
+                7.645875251504884,
+                0.7999999999992725,
+                1.2048192771093689,
+                8.232931726916009,
+                7.831325301190352,
+                2.2088353413588058,
+                1.2024048096203892
+            ],
+            "cpuUsedPercent": 5.7511737089081025,
+            "cpuUsed": 0.6901408450689723
+        },
+        "mem": {
+            "total": 42058862592,
+            "available": 27753091072,
+            "used": 13750063104,
+            "usedPercent": 32.692427366343935
+        },
+        "disk": {
+            "devices": [
+                {
+                    "device": "/dev/sda2",
+                    "mountpoint": "/",
+                    "fstype": "ext4",
+                    "opts": "rw,relatime",
+                    "total": 200498,
+                    "usage": 18.98928223857296,
+                    "inodesUsage": 1.5503158569335938
+                },
+                {
+                    "device": "/dev/loop0",
+                    "mountpoint": "/snap/core20/2769",
+                    "fstype": "squashfs",
+                    "opts": "ro,nodev,relatime",
+                    "total": 63,
+                    "usage": 100,
+                    "inodesUsage": 100
+                },
+                {
+                    "device": "/dev/loop1",
+                    "mountpoint": "/snap/core20/2866",
+                    "fstype": "squashfs",
+                    "opts": "ro,nodev,relatime",
+                    "total": 63,
+                    "usage": 100,
+                    "inodesUsage": 100
+                },
+                {
+                    "device": "/dev/loop2",
+                    "mountpoint": "/snap/lxd/38469",
+                    "fstype": "squashfs",
+                    "opts": "ro,nodev,relatime",
+                    "total": 91,
+                    "usage": 100,
+                    "inodesUsage": 100
+                },
+                {
+                    "device": "/dev/loop3",
+                    "mountpoint": "/snap/lxd/38800",
+                    "fstype": "squashfs",
+                    "opts": "ro,nodev,relatime",
+                    "total": 91,
+                    "usage": 100,
+                    "inodesUsage": 100
+                },
+                {
+                    "device": "/dev/loop4",
+                    "mountpoint": "/snap/snapd/26382",
+                    "fstype": "squashfs",
+                    "opts": "ro,nodev,relatime",
+                    "total": 48,
+                    "usage": 100,
+                    "inodesUsage": 100
+                },
+                {
+                    "device": "/dev/loop5",
+                    "mountpoint": "/snap/snapd/26865",
+                    "fstype": "squashfs",
+                    "opts": "ro,nodev,relatime",
+                    "total": 49,
+                    "usage": 100,
+                    "inodesUsage": 100
+                }
+            ]
+        },
+        "panelMemUsage": 5929,
+        "panelCpuUsage": 0
+    }
+}

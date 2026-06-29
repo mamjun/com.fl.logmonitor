@@ -1,15 +1,45 @@
 {
+    "max_columns": 3,
+    "json_max_columns": 3,
     "logs": [
         {
             "path": "example1.log",
             "lines": 30,
             "refresh_ms": 1000,
-            "column": 1
+            "column": 1,
+            "order": "asc"
         },
         {
             "path": "example2.log",
             "lines": 20,
             "refresh_ms": 2000,
+            "column": 2,
+            "order": "desc"
+        }
+    ],
+    "json_monitors": [
+        {
+            "path": "example.json",
+            "fields": [
+                "code",
+                "data.host.hostname",
+                "data.cpu.cpuUsedPercent",
+                "data.mem.usedPercent",
+                "data.disk.devices"
+            ],
+            "refresh_ms": 1000,
+            "column": 1
+        },
+        {
+            "path": "D:/Dev/Python/com.fl.logmonitor/example.json",
+            "fields": [
+                "data.cpu.cpuPercent",
+                "data.cpu.cpuUsedPercent",
+                "data.cpu.cpuUsed",
+                "data.mem.total",
+                "data.mem.available"
+            ],
+            "refresh_ms": 1000,
             "column": 2
         }
     ]
