@@ -1,0 +1,14 @@
+{
+    "logs": [
+        {
+            "path": "example1.log",
+            "lines": 30,
+            "refresh_ms": 1000
+        },
+        {
+            "path": "example2.log",
+            "lines": 20,
+            "refresh_ms": 2000
+        }
+    ]
+}
